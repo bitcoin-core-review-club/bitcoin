@@ -35,11 +35,18 @@ void test_one_input(const std::vector<uint8_t>& buffer)
     const bool store = fuzzed_data_provider.ConsumeBool();
     PrecomputedTransactionData tx_data;
     CachingTransactionSignatureChecker caching_transaction_signature_checker{mutable_transaction ? &tx : nullptr, n_in, amount, store, tx_data};
-    const std::optional<CPubKey> pub_key = ConsumeDeserializable<CPubKey>(fuzzed_data_provider);
-    if (pub_key) {
-        const std::vector<uint8_t> random_bytes = ConsumeRandomLengthByteVector(fuzzed_data_provider);
+    const std::vector<uint8_t> random_bytes = ConsumeRandomLengthByteVector(fuzzed_data_provider);
+    if (fuzzed_data_provider.ConsumeBool()) {
+        XOnlyPubKey pub_key(ConsumeUInt256(fuzzed_data_provider));
         if (!random_bytes.empty()) {
-            (void)caching_transaction_signature_checker.VerifySignature(random_bytes, *pub_key, ConsumeUInt256(fuzzed_data_provider));
+            (void)caching_transaction_signature_checker.VerifySchnorrSignature(random_bytes, pub_key, ConsumeUInt256(fuzzed_data_provider));
+        }
+    } else {
+        const std::optional<CPubKey> pub_key = ConsumeDeserializable<CPubKey>(fuzzed_data_provider);
+        if (pub_key) {
+            if (!random_bytes.empty()) {
+                (void)caching_transaction_signature_checker.VerifyECDSASignature(random_bytes, *pub_key, ConsumeUInt256(fuzzed_data_provider));
+            }
         }
     }
 }
