@@ -104,6 +104,7 @@ BASE_SCRIPTS = [
     'mempool_updatefromblock.py',
     'wallet_dump.py',
     'wallet_listtransactions.py',
+    'feature_taproot.py',
     # vv Tests less than 60s vv
     'p2p_sendheaders.py',
     'wallet_zapwallettxes.py',
