@@ -11,7 +11,9 @@
 #include <script/standard.h>
 #include <serialize.h>
 #include <streams.h>
+#include <undo.h>
 #include <univalue.h>
+#include <util/check.h>
 #include <util/system.h>
 #include <util/strencodings.h>
 
@@ -177,7 +179,7 @@ void ScriptPubKeyToUniv(const CScript& scriptPubKey,
     out.pushKV("addresses", a);
 }
 
-void TxToUniv(const CTransaction& tx, const uint256& hashBlock, UniValue& entry, bool include_hex, int serialize_flags)
+void TxToUniv(const CTransaction& tx, const uint256& hashBlock, UniValue& entry, bool include_hex, int serialize_flags, const CTxUndo* txundo)
 {
     entry.pushKV("txid", tx.GetHash().GetHex());
     entry.pushKV("hash", tx.GetWitnessHash().GetHex());
@@ -190,6 +192,10 @@ void TxToUniv(const CTransaction& tx, const uint256& hashBlock, UniValue& entry,
     entry.pushKV("locktime", (int64_t)tx.nLockTime);
 
     UniValue vin(UniValue::VARR);
+
+    CAmount amt_total_in = 0;
+    CAmount amt_total_out = 0;
+
     for (unsigned int i = 0; i < tx.vin.size(); i++) {
         const CTxIn& txin = tx.vin[i];
         UniValue in(UniValue::VOBJ);
@@ -209,6 +215,11 @@ void TxToUniv(const CTransaction& tx, const uint256& hashBlock, UniValue& entry,
                 txinwitness.push_back(HexStr(item));
             }
             in.pushKV("txinwitness", txinwitness);
+            if (txundo) {
+                const CTxOut& txout = txundo->vprevout[i].out;
+                // Suppress fuzz test failures by ignoring nonsense values
+                if (MoneyRange(txout.nValue)) amt_total_in += txout.nValue;
+            }
         }
         in.pushKV("sequence", (int64_t)txin.nSequence);
         vin.push_back(in);
@@ -228,8 +239,18 @@ void TxToUniv(const CTransaction& tx, const uint256& hashBlock, UniValue& entry,
         ScriptPubKeyToUniv(txout.scriptPubKey, o, true);
         out.pushKV("scriptPubKey", o);
         vout.push_back(out);
+
+        // Suppress fuzz test failures by ignoring nonsense values
+        if (MoneyRange(txout.nValue)) amt_total_out += txout.nValue;
     }
     entry.pushKV("vout", vout);
+
+    // For coinbase transactions we have txundo == nullptr
+    if (txundo) {
+        CAmount fee = amt_total_in - amt_total_out;
+        CHECK_NONFATAL(MoneyRange(fee));
+        entry.pushKV("fee", ValueFromAmount(fee));
+    }
 
     if (!hashBlock.IsNull())
         entry.pushKV("blockhash", hashBlock.GetHex());
