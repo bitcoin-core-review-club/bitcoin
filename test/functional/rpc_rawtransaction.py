@@ -10,6 +10,7 @@ Test the following RPCs:
    - sendrawtransaction
    - decoderawtransaction
    - getrawtransaction
+   - searchrawtransactions
 """
 
 from collections import OrderedDict
@@ -49,7 +50,7 @@ class RawTransactionsTest(BitcoinTestFramework):
         self.setup_clean_chain = True
         self.num_nodes = 3
         self.extra_args = [
-            ["-txindex"],
+            ["-txindex", "-addrindex"],
             ["-txindex"],
             ["-txindex"],
         ]
@@ -104,8 +105,6 @@ class RawTransactionsTest(BitcoinTestFramework):
         address2 = self.nodes[0].getnewaddress()
         assert_raises_rpc_error(-1, "JSON value is not an array as expected", self.nodes[0].createrawtransaction, [], 'foo')
         self.nodes[0].createrawtransaction(inputs=[], outputs={})  # Should not throw for backwards compatibility
-        self.nodes[0].createrawtransaction(inputs=[], outputs=[])
-        assert_raises_rpc_error(-8, "Data must be hexadecimal string", self.nodes[0].createrawtransaction, [], {'data': 'foo'})
         assert_raises_rpc_error(-5, "Invalid Bitcoin address", self.nodes[0].createrawtransaction, [], {'foo': 0})
         assert_raises_rpc_error(-3, "Invalid amount", self.nodes[0].createrawtransaction, [], {address: 'foo'})
         assert_raises_rpc_error(-3, "Amount out of range", self.nodes[0].createrawtransaction, [], {address: -1})
@@ -487,6 +486,44 @@ class RawTransactionsTest(BitcoinTestFramework):
         assert_equal(testres['allowed'], True)
         self.nodes[2].sendrawtransaction(hexstring=rawTxSigned['hex'], maxfeerate='0.20000000')
 
+        self._test_searchrawtransactions()
+
+    def _test_searchrawtransactions(self):
+        self.log.info('searchrawtransactions test')
+
+        # Create 3 new outputs with the same address.
+        expected_txids = []
+        addr1 = self.nodes[1].getnewaddress()
+        expected_txids.append(self.nodes[0].sendtoaddress(addr1, 0.1))
+        expected_txids.append(self.nodes[0].sendtoaddress(addr1, 0.1))
+        expected_txids.append(self.nodes[0].sendtoaddress(addr1, 0.1))
+
+        self.nodes[0].generate(1)
+        self.sync_all()
+
+        res = self.nodes[0].searchrawtransactions(addr1, True)
+        spends_results, creations_results = res[0], res[1]
+
+        assert_equal(len(spends_results), 0)
+        assert_equal(len(creations_results), 3)
+
+        for c in creations_results:
+            # Since this output was created in the tx, its outpoint should have the same txid.
+            outpoint_txid = c['created_outpoint']['txid']
+            txid = c['txid']
+            assert_equal(outpoint_txid, txid)
+            assert(txid in expected_txids)
+
+        # Check that equivalent result is produced without verbose option set.
+        res = self.nodes[0].searchrawtransactions(addr1)
+        spends_results, creations_results = res[0], res[1]
+
+        assert_equal(len(spends_results), 0)
+        assert_equal(len(creations_results), 3)
+        for c in creations_results:
+            # Since this output was created in the tx, its outpoint should have the same txid.
+            outpoint_txid = c['created_outpoint']['txid']
+            assert(outpoint_txid in expected_txids)
 
 if __name__ == '__main__':
     RawTransactionsTest().main()
