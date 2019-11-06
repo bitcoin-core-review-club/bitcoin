@@ -2410,9 +2410,43 @@ bool CWallet::SelectCoinsMinConf(const CAmount& nTargetValue, const CoinEligibil
     if (SelectCoinsBnB(positive_groups, nTargetValue, cost_of_change, setCoinsRet, nValueRet)) {
         return true;
     }
+
     // The knapsack solver has some legacy behavior where it will spend dust outputs. We retain this behavior, so don't filter for positive only here.
     std::vector<OutputGroup> all_groups = GroupOutputs(coins, !coin_selection_params.m_avoid_partial_spends, coin_selection_params, eligibility_filter, false /* positive_only */);
-    return KnapsackSolver(nTargetValue + change_fee, all_groups, setCoinsRet, nValueRet);
+
+    std::set<CInputCoin> knapsack_coins;
+    CAmount knapsack_value;
+    bool knapsack_ret = KnapsackSolver(nTargetValue + change_fee, all_groups, knapsack_coins, knapsack_value);
+    CAmount knapsack_fees = 0;
+    for (const auto& coin : knapsack_coins) {
+        knapsack_fees += coin.m_fee;
+    }
+
+    std::set<CInputCoin> srd_coins;
+    CAmount srd_value;
+    bool srd_ret = SelectCoinsSRD(positive_groups, nTargetValue + change_fee + MIN_FINAL_CHANGE, srd_coins, srd_value);
+    CAmount srd_fees = 0;
+    for (const auto& coin : srd_coins) {
+        srd_fees += coin.m_fee;
+    }
+
+    if (knapsack_ret) {
+        setCoinsRet = knapsack_coins;
+        nValueRet = knapsack_value;
+    }
+    if (srd_ret) {
+        // Use SRD if knapsack has no solution, SRD has lower fees, or SRD has more inputs for same fees
+        if (!knapsack_ret || srd_fees < knapsack_fees || (srd_fees == knapsack_fees && srd_coins.size() > knapsack_coins.size())) {
+            setCoinsRet = srd_coins;
+            nValueRet = srd_value;
+        }
+    }
+    if (knapsack_ret || srd_ret) return true;
+
+    // No solution
+    setCoinsRet.clear();
+    nValueRet = 0;
+    return false;
 }
 
 bool CWallet::SelectCoins(const std::vector<COutput>& vAvailableCoins, const CAmount& nTargetValue, std::set<CInputCoin>& setCoinsRet, CAmount& nValueRet, const CCoinControl& coin_control, CoinSelectionParams& coin_selection_params) const
