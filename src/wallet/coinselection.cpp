@@ -168,6 +168,24 @@ bool SelectCoinsBnB(std::vector<OutputGroup>& utxo_pool, const CAmount& selectio
     return true;
 }
 
+bool SelectCoinsSRD(std::vector<OutputGroup>& utxo_pool, const CAmount& target_value, std::set<CInputCoin>& out_set, CAmount& value_ret)
+{
+    out_set.clear();
+    value_ret = 0;
+
+    CAmount selected_eff_value = 0;
+    Shuffle(utxo_pool.begin(), utxo_pool.end(), FastRandomContext());
+    for (const auto& group : utxo_pool) {
+        selected_eff_value += group.effective_value;
+        value_ret += group.m_value;
+        util::insert(out_set, group.m_outputs);
+        if (selected_eff_value >= target_value) {
+            return true;
+        }
+    }
+    return false;
+}
+
 static void ApproximateBestSubset(const std::vector<OutputGroup>& groups, const CAmount& nTotalLower, const CAmount& nTargetValue,
                                   std::vector<char>& vfBest, CAmount& nBest, int iterations = 1000)
 {
