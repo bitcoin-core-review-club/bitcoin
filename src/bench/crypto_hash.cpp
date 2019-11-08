@@ -4,6 +4,7 @@
 
 
 #include <bench/bench.h>
+#include <crypto/muhash.h>
 #include <crypto/ripemd160.h>
 #include <crypto/sha1.h>
 #include <crypto/sha256.h>
@@ -105,6 +106,70 @@ static void FastRandom_1bit(benchmark::Bench& bench)
     });
 }
 
+static void MuHash(benchmark::Bench& bench)
+{
+    FastRandomContext rng(true);
+    MuHash3072 acc;
+    unsigned char key[32] = {0};
+    int i = 0;
+    bench.run([&] {
+        key[0] = ++i;
+        acc *= MuHash3072(key);
+    });
+}
+
+static void MuHashAdd(benchmark::Bench& bench)
+{
+    FastRandomContext rng(true);
+    MuHash3072 acc;
+    unsigned char key[32];
+    std::vector<unsigned char> randkey = rng.randbytes(32);
+    for (size_t i = 0; i < randkey.size(); ++i) {
+        key[i] = randkey[i];
+    }
+
+    MuHash3072 muhash = MuHash3072(key);
+    bench.run([&] {
+        acc *= muhash;
+    });
+}
+
+static void MuHashDiv(benchmark::Bench& bench)
+{
+    FastRandomContext rng(true);
+    MuHash3072 acc;
+    unsigned char key[32];
+    std::vector<unsigned char> randkey = rng.randbytes(32);
+    for (size_t i = 0; i < randkey.size(); ++i) {
+        key[i] = randkey[i];
+    }
+
+    MuHash3072 muhash = MuHash3072(key);
+
+    for (size_t i = 0; i < bench.epochIterations(); ++i) {
+        acc *= muhash;
+    }
+
+    bench.run([&] {
+        acc /= muhash;
+    });
+}
+
+static void MuHashPrecompute(benchmark::Bench& bench)
+{
+    FastRandomContext rng(true);
+    MuHash3072 acc;
+    unsigned char key[32];
+    std::vector<unsigned char> randkey = rng.randbytes(32);
+    for (size_t i = 0; i < randkey.size(); ++i) {
+        key[i] = randkey[i];
+    }
+
+    bench.run([&] {
+        MuHash3072{key};
+    });
+}
+
 BENCHMARK(RIPEMD160);
 BENCHMARK(SHA1);
 BENCHMARK(SHA256);
@@ -116,3 +181,8 @@ BENCHMARK(SipHash_32b);
 BENCHMARK(SHA256D64_1024);
 BENCHMARK(FastRandom_32bit);
 BENCHMARK(FastRandom_1bit);
+
+BENCHMARK(MuHash);
+BENCHMARK(MuHashAdd);
+BENCHMARK(MuHashDiv);
+BENCHMARK(MuHashPrecompute);
