@@ -92,10 +92,17 @@ protected:
     /**
      * Notifies listeners of a transaction leaving mempool.
      *
-     * This only fires for transactions which leave mempool because of expiry,
-     * size limiting, reorg (changes in lock times/coinbase maturity), or
-     * replacement. This does not include any transactions which are included
-     * in BlockConnectedDisconnected either in block->vtx or in txnConflicted.
+     * This notification fires for transactions that are removed from the
+     * mempool for the following reasons:
+     *
+     * - EXPIRY (expired from mempool after -mempoolexpiry hours)
+     * - SIZELIMIT (removed in size limiting if the mempool exceeds -maxmempool megabytes)
+     * - REORG (removed during a reorg)
+     * - CONFLICT (removed because it conflicts with in-block transaction)
+     * - REPLACED (removed due to RBF replacement)
+     *
+     * This does not fire for transactions that are removed from the mempool
+     * because they have been included in a block.
      *
      * Called on a background thread.
      */

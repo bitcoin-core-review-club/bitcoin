@@ -406,7 +406,7 @@ void CTxMemPool::removeUnchecked(txiter it, MemPoolRemovalReason reason)
 {
     CTransactionRef ptx = it->GetSharedTx();
     NotifyEntryRemoved(ptx, reason);
-    if (reason != MemPoolRemovalReason::BLOCK && reason != MemPoolRemovalReason::CONFLICT) {
+    if (reason != MemPoolRemovalReason::BLOCK) {
         GetMainSignals().TransactionRemovedFromMempool(ptx);
     }
 
