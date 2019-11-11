@@ -353,7 +353,6 @@ void CTxMemPool::AddTransactionsUpdated(unsigned int n)
 
 void CTxMemPool::addUnchecked(const CTxMemPoolEntry &entry, setEntries &setAncestors, bool validFeeEstimate)
 {
-    NotifyEntryAdded(entry.GetSharedTx());
     // Add to memory pool without checking anything.
     // Used by AcceptToMemoryPool(), which DOES do
     // all the appropriate checks.
@@ -404,10 +403,8 @@ void CTxMemPool::addUnchecked(const CTxMemPoolEntry &entry, setEntries &setAnces
 
 void CTxMemPool::removeUnchecked(txiter it, MemPoolRemovalReason reason)
 {
-    CTransactionRef ptx = it->GetSharedTx();
-    NotifyEntryRemoved(ptx, reason);
     if (reason != MemPoolRemovalReason::BLOCK) {
-        GetMainSignals().TransactionRemovedFromMempool(ptx);
+        GetMainSignals().TransactionRemovedFromMempool(it->GetSharedTx());
     }
 
     const uint256 hash = it->GetTx().GetHash();
