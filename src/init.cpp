@@ -23,6 +23,7 @@
 #include <index/blockfilterindex.h>
 #include <index/txindex.h>
 #include <interfaces/chain.h>
+#include <index/addrindex.h>
 #include <key.h>
 #include <miner.h>
 #include <net.h>
@@ -166,6 +167,9 @@ void Interrupt(NodeContext& node)
     if (g_txindex) {
         g_txindex->Interrupt();
     }
+    if (g_addr_index) {
+        g_addr_index->Interrupt();
+    }
     ForEachBlockFilterIndex([](BlockFilterIndex& index) { index.Interrupt(); });
 }
 
@@ -198,6 +202,7 @@ void Shutdown(NodeContext& node)
     if (node.peer_logic) UnregisterValidationInterface(node.peer_logic.get());
     if (node.connman) node.connman->Stop();
     if (g_txindex) g_txindex->Stop();
+    if (g_addr_index) g_addr_index->Stop();
     ForEachBlockFilterIndex([](BlockFilterIndex& index) { index.Stop(); });
 
     StopTorControl();
@@ -213,6 +218,7 @@ void Shutdown(NodeContext& node)
     node.connman.reset();
     node.banman.reset();
     g_txindex.reset();
+    g_addr_index.reset();
     DestroyAllBlockFilterIndexes();
 
     if (::mempool.IsLoaded() && gArgs.GetArg("-persistmempool", DEFAULT_PERSIST_MEMPOOL)) {
@@ -393,6 +399,7 @@ void SetupServerArgs()
     hidden_args.emplace_back("-sysperms");
 #endif
     gArgs.AddArg("-txindex", strprintf("Maintain a full transaction index, used by the getrawtransaction rpc call (default: %u)", DEFAULT_TXINDEX), ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
+    gArgs.AddArg("-addrindex", strprintf("Maintain a full address index, used by the searchrawtransactions rpc call (default: %u)", DEFAULT_ADDR_INDEX), ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
     gArgs.AddArg("-blockfilterindex=<type>",
                  strprintf("Maintain an index of compact filters by block (default: %s, values: %s).", DEFAULT_BLOCKFILTERINDEX, ListBlockFilterTypes()) +
                  " If <type> is not supplied or if <type> = 1, indexes for all known types are enabled.",
@@ -950,6 +957,8 @@ bool AppInitParameterInteraction()
     if (gArgs.GetArg("-prune", 0)) {
         if (gArgs.GetBoolArg("-txindex", DEFAULT_TXINDEX))
             return InitError(_("Prune mode is incompatible with -txindex.").translated);
+        if (gArgs.GetBoolArg("-addrindex", DEFAULT_ADDR_INDEX))
+            return InitError(_("Prune mode is incompatible with -addrindex.").translated);
         if (!g_enabled_filter_types.empty()) {
             return InitError(_("Prune mode is incompatible with -blockfilterindex.").translated);
         }
@@ -1436,6 +1445,8 @@ bool AppInitMain(NodeContext& node)
         filter_index_cache = max_cache / n_indexes;
         nTotalCache -= filter_index_cache * n_indexes;
     }
+    int64_t addr_index_cache = std::min(nTotalCache / 8, gArgs.GetBoolArg("-addrindex", DEFAULT_TXINDEX) ? max_addr_index_cache << 20 : 0);
+    nTotalCache -= addr_index_cache;
     int64_t nCoinDBCache = std::min(nTotalCache / 2, (nTotalCache / 4) + (1 << 23)); // use 25%-50% of the remainder for disk cache
     nCoinDBCache = std::min(nCoinDBCache, nMaxCoinsDBCache << 20); // cap total coins db cache
     nTotalCache -= nCoinDBCache;
@@ -1452,6 +1463,25 @@ bool AppInitMain(NodeContext& node)
     }
     LogPrintf("* Using %.1f MiB for chain state database\n", nCoinDBCache * (1.0 / 1024 / 1024));
     LogPrintf("* Using %.1f MiB for in-memory UTXO set (plus up to %.1f MiB of unused mempool space)\n", nCoinCacheUsage * (1.0 / 1024 / 1024), nMempoolSizeMax * (1.0 / 1024 / 1024));
+
+    if (gArgs.GetBoolArg("-addrindex", DEFAULT_ADDR_INDEX)) {
+        LogPrintf("* Using %.1f MiB for address index database\n", addr_index_cache * (1.0 / 1024 / 1024));
+
+        InitWarning(strprintf(_("Built-in address index is enabled! Address "
+          "indexing is going to become less scalable as transaction history "
+          "increases, and will eventually need to be removed from %s and "
+          "replaced by a dedicated external index. Users relying on the address"
+          " index for accounting purposes are advised to track metadata in real"
+          " time so relying on a historical index is not necessary."
+          ).translated, PACKAGE_NAME));
+
+        if (g_wallet_init_interface.HasWalletSupport()) {
+          InitWarning(strprintf(_("If using the address index to work around "
+          "lack of tagging or notifications from the built-in %s wallet, "
+          "please file wallet feature requests: %s"
+          ).translated, PACKAGE_NAME, PACKAGE_BUGREPORT));
+        }
+    }
 
     bool fLoaded = false;
     while (!fLoaded && !ShutdownRequested()) {
@@ -1652,6 +1682,11 @@ bool AppInitMain(NodeContext& node)
     if (gArgs.GetBoolArg("-txindex", DEFAULT_TXINDEX)) {
         g_txindex = MakeUnique<TxIndex>(nTxIndexCache, false, fReindex);
         g_txindex->Start();
+    }
+
+    if (gArgs.GetBoolArg("-addrindex", DEFAULT_ADDR_INDEX)) {
+        g_addr_index = MakeUnique<AddrIndex>(addr_index_cache, false, fReindex);
+        g_addr_index->Start();
     }
 
     for (const auto& filter_type : g_enabled_filter_types) {
