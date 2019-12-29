@@ -93,6 +93,8 @@ class AvoidReuseTest(BitcoinTestFramework):
         self.test_fund_send_fund_send("bech32")
         reset_balance(self.nodes[1], self.nodes[0].getnewaddress())
         self.test_getbalances_used()
+        reset_balance(self.nodes[1], self.nodes[0].getnewaddress())
+        self.test_large_destination_group()
 
     def test_persistence(self):
         '''Test that wallet files persist the avoid_reuse flag.'''
@@ -287,6 +289,37 @@ class AvoidReuseTest(BitcoinTestFramework):
         # in the reused address as used/reused
         assert_unspent(self.nodes[1], total_count=2, total_sum=6, reused_count=1, reused_sum=1)
         assert_balances(self.nodes[1], mine={"used": 1, "trusted": 5})
+
+    def test_large_destination_group(self):
+        '''
+        Test the case where [1] only has 11 outputs of 1 BTC in the same reused
+        address and tries to send a small payment of 0.5 BTC. The wallet
+        should use 10 outputs from the reused address as inputs and not a
+        single 1 BTC input, in order to join several outputs from the reused
+        address.
+        '''
+        self.log.info("Test large destination group coin selection")
+
+        # node under test should be empty
+        assert_equal(self.nodes[1].getbalance(avoid_reuse=False), 0)
+
+        new_addr = self.nodes[1].getnewaddress()
+        ret_addr = self.nodes[0].getnewaddress()
+
+        # Send 11 outputs of 1 BTC to the same, reused address in the wallet
+        for _ in range(11):
+            self.nodes[0].sendtoaddress(new_addr, 1)
+
+        self.nodes[0].generate(1)
+        self.sync_all()
+
+        # Sending a transaction that is smaller than each one of the
+        # available outputs
+        txid = self.nodes[1].sendtoaddress(address=ret_addr, amount=0.5)
+        inputs = self.nodes[1].getrawtransaction(txid, 1)["vin"]
+
+        # The transaction should use 10 inputs exactly
+        assert_equal(len(inputs), 10)
 
 if __name__ == '__main__':
     AvoidReuseTest().main()
