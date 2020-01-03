@@ -14,34 +14,6 @@ import logging
 
 # Fuzzers known to lack a seed corpus in https://github.com/bitcoin-core/qa-assets/tree/master/fuzz_seed_corpus
 FUZZERS_MISSING_CORPORA = [
-    "addr_info_deserialize",
-    "base_encode_decode",
-    "block",
-    "block_file_info_deserialize",
-    "block_filter_deserialize",
-    "block_header_and_short_txids_deserialize",
-    "fee_rate_deserialize",
-    "flat_file_pos_deserialize",
-    "hex",
-    "integer",
-    "key_origin_info_deserialize",
-    "merkle_block_deserialize",
-    "out_point_deserialize",
-    "parse_hd_keypath",
-    "parse_numbers",
-    "parse_script",
-    "parse_univalue",
-    "partial_merkle_tree_deserialize",
-    "partially_signed_transaction_deserialize",
-    "prefilled_transaction_deserialize",
-    "psbt_input_deserialize",
-    "psbt_output_deserialize",
-    "pub_key_deserialize",
-    "script_deserialize",
-    "sub_net_deserialize",
-    "tx_in",
-    "tx_in_deserialize",
-    "tx_out",
 ]
 
 def main():
@@ -137,7 +109,6 @@ def run_once(*, corpus, test_list, build_dir, export_coverage):
         args = [
             os.path.join(build_dir, 'src', 'test', 'fuzz', t),
             '-runs=1',
-            '-detect_leaks=0',
             corpus_path,
         ]
         logging.debug('Run {} with args {}'.format(t, args))
