@@ -9,6 +9,8 @@
 #include <config/bitcoin-config.h>
 #endif
 
+#include <serialize.h>
+
 #include <stdint.h>
 
 struct Num3072 {
@@ -83,6 +85,13 @@ public:
 
     /* Finalize into a 384-byte hash. Does not change this object's value. */
     void Finalize(Span<unsigned char> hash384) noexcept;
+
+    SERIALIZE_METHODS(MuHash3072, obj)
+    {
+        for (int i = 0; i < obj.data.LIMBS; ++i) {
+            READWRITE(obj.data.limbs[i]);
+        }
+    }
 };
 
 #endif // BITCOIN_CRYPTO_MUHASH_H
