@@ -2175,6 +2175,10 @@ bool static ProcessMessage(CNode* pfrom, const std::string& strCommand, CDataStr
             nCMPCTBLOCKVersion = 1;
             connman->PushMessage(pfrom, msgMaker.Make(NetMsgType::SENDCMPCT, fAnnounceUsingCMPCTBLOCK, nCMPCTBLOCKVersion));
         }
+
+        if (pfrom->nVersion >= WTXID_RELAY_VERSION) {
+            connman->PushMessage(pfrom, msgMaker.Make(NetMsgType::WTXIDRELAY));
+        }
         pfrom->fSuccessfullyConnected = true;
         return true;
     }
@@ -2237,6 +2241,12 @@ bool static ProcessMessage(CNode* pfrom, const std::string& strCommand, CDataStr
             pfrom->fGetAddr = false;
         if (pfrom->fOneShot)
             pfrom->fDisconnect = true;
+        return true;
+    }
+
+    if (strCommand == NetMsgType::WTXIDRELAY && pfrom->nVersion >= WTXID_RELAY_VERSION) {
+        LOCK(cs_main);
+        State(pfrom->GetId())->m_wtxid_relay = true;
         return true;
     }
 
