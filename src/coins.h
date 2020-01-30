@@ -115,13 +115,20 @@ struct CCoinsCacheEntry
     unsigned char flags;
 
     enum Flags {
-        DIRTY = (1 << 0), // This cache entry is potentially different from the version in the parent view.
-        FRESH = (1 << 1), // The parent view does not have this entry (or it is pruned).
-        /* Note that FRESH is a performance optimization with which we can
-         * erase coins that are fully spent if we know we do not need to
-         * flush the changes to the parent cache.  It is always safe to
-         * not mark FRESH if that condition is not guaranteed.
-         */
+        //! This cache entry is potentially different from the version in the parent cache.
+        //! Failing to mark a coin as DIRTY when it is potentially different from the
+        //! parent view will cause a consensus failure, since the coin's state won't get
+        //! written to the parent when the cache is flushed.
+        //! Note that all empty coins in the cache MUST be DIRTY.
+        DIRTY = (1 << 0),
+        //! The parent cache does not have this coin (or it is spent in the parent cache).
+        //! If a FRESH coin is spent in this cache, then it can be deleted entirely
+        //! and doesn't ever need to be flushed to the parent. This is a performance
+        //! optimization. Note that a coin cannot be both FRESH and empty.
+        //! Marking a coin FRESH which is does exist in the parent view will
+        //! cause a consensus failure, since it might not be deleted from the
+        //! parent when this cache is flushed.
+        FRESH = (1 << 1),
     };
 
     CCoinsCacheEntry() : flags(0) {}
@@ -246,7 +253,7 @@ public:
     bool HaveCoinInCache(const COutPoint &outpoint) const;
 
     /**
-     * Return a reference to Coin in the cache, or a pruned one if not found. This is
+     * Return a reference to Coin in the cache, or coinEmpty if not found. This is
      * more efficient than GetCoin.
      *
      * Generally, do not hold the reference returned for more than a short scope.
@@ -258,8 +265,8 @@ public:
     const Coin& AccessCoin(const COutPoint &output) const;
 
     /**
-     * Add a coin. Set potential_overwrite to true if a non-pruned version may
-     * already exist.
+     * Add a coin. Set potential_overwrite to true if an unspent version may
+     * already exist in the cache.
      */
     void AddCoin(const COutPoint& outpoint, Coin&& coin, bool potential_overwrite);
 

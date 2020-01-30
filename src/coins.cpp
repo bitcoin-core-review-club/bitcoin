@@ -75,8 +75,26 @@ void CCoinsViewCache::AddCoin(const COutPoint &outpoint, Coin&& coin, bool possi
     }
     if (!possible_overwrite) {
         if (!it->second.coin.IsSpent()) {
-            throw std::logic_error("Adding new coin that replaces non-pruned entry");
+            throw std::logic_error("Attempted to overwrite an unspent coin");
         }
+        // If the coin exists in this cache, is spent and is DIRTY, then
+        // its spentness hasn't been flushed to the parent cache. We're
+        // re-adding the coin to this cache now but we can't mark it as FRESH.
+        // If we mark it FRESH and then spend it before the cache is flushed
+        // we would remove it from this cache and would never flush spentness
+        // to the parent cache.
+        //
+        // Re-adding a spent coin can happen in the case of a re-org (the coin
+        // is 'spent' when the block containing it is disconnected and then
+        // re-added if it also appears in the newly connected blocks). It can
+        // also happen in the case of duplicate txids. In practice, BIP30 and
+        // BIP34 ensure that the only duplicate transactions before block
+        // 1,983,702 are the two pairs of coinbase txs at heights 91812/91842
+        // and heights 91772/91880. See the large comment in ConnectBlock() for
+        // more details.
+        //
+        // If the coin doesn't exist in the current cache, or is spent but not
+        // DIRTY, then it can be marked FRESH.
         fresh = !(it->second.flags & CCoinsCacheEntry::DIRTY);
     }
     it->second.coin = std::move(coin);
@@ -164,26 +182,25 @@ bool CCoinsViewCache::BatchWrite(CCoinsMap &mapCoins, const uint256 &hashBlockIn
             entry.coin = std::move(it->second.coin);
             cachedCoinsUsage += entry.coin.DynamicMemoryUsage();
             entry.flags = CCoinsCacheEntry::DIRTY;
-            // We can mark it FRESH in the parent if it was FRESH in the child
-            // Otherwise it might have just been flushed from the parent's cache
-            // and already exist in the grandparent
+            // A coin can only be FRESH in the child cache if it doesn't exist
+            // in any of the ancestor caches. We can therefore mark it FRESH
+            // when flushing to the parent cache.
             if (it->second.flags & CCoinsCacheEntry::FRESH) {
                 entry.flags |= CCoinsCacheEntry::FRESH;
             }
         } else {
-            // Assert that the child cache entry was not marked FRESH if the
-            // parent cache entry has unspent outputs. If this ever happens,
-            // it means the FRESH flag was misapplied and there is a logic
-            // error in the calling code.
+            // Found the entry in the parent cache
             if ((it->second.flags & CCoinsCacheEntry::FRESH) && !itUs->second.coin.IsSpent()) {
-                throw std::logic_error("FRESH flag misapplied to cache entry for base transaction with spendable outputs");
+                // The coin was marked FRESH in the child cache, but the coin
+                // exists in the parent cache. If this ever happens, it means
+                // the FRESH flag was misapplied and there is a logic error in
+                // the calling code.
+                throw std::logic_error("FRESH flag misapplied to coin that exists in parent cache");
             }
 
-            // Found the entry in the parent cache
             if ((itUs->second.flags & CCoinsCacheEntry::FRESH) && it->second.coin.IsSpent()) {
-                // The grandparent does not have an entry, and the child is
-                // modified and being pruned. This means we can just delete
-                // it from the parent.
+                // The grandparent cache does not have an entry, and the coin
+                // has been spent. We can just delete it from the parent cache.
                 cachedCoinsUsage -= itUs->second.coin.DynamicMemoryUsage();
                 cacheCoins.erase(itUs);
             } else {
@@ -192,11 +209,10 @@ bool CCoinsViewCache::BatchWrite(CCoinsMap &mapCoins, const uint256 &hashBlockIn
                 itUs->second.coin = std::move(it->second.coin);
                 cachedCoinsUsage += itUs->second.coin.DynamicMemoryUsage();
                 itUs->second.flags |= CCoinsCacheEntry::DIRTY;
-                // NOTE: It is possible the child has a FRESH flag here in
-                // the event the entry we found in the parent is pruned. But
-                // we must not copy that FRESH flag to the parent as that
-                // pruned state likely still needs to be communicated to the
-                // grandparent.
+                // NOTE: It isn't safe to mark the coin as FRESH in the parent
+                // cache. If it already existed and was spent in the parent
+                // cache then marking it FRESH would prevent that spentness
+                // from being flushed to the grandparent.
             }
         }
     }
