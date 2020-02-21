@@ -4674,28 +4674,38 @@ bool LoadExternalBlockFile(const CChainParams& chainparams, FILE* fileIn, FlatFi
                 break;
             }
             try {
-                // read block
+                // read block header
                 uint64_t nBlockPos = blkdat.GetPos();
                 if (dbp)
                     dbp->nPos = nBlockPos;
-                blkdat.SetLimit(nBlockPos + nSize);
-                blkdat.SetPos(nBlockPos);
-                std::shared_ptr<CBlock> pblock = std::make_shared<CBlock>();
-                CBlock& block = *pblock;
-                blkdat >> block;
-                nRewind = blkdat.GetPos();
+                blkdat.SetLimit(nBlockPos + 80);
+                CBlockHeader header;
+                blkdat >> header;
 
-                uint256 hash = block.GetHash();
+                const uint256 hash = header.GetHash();
                 {
                     LOCK(cs_main);
                     // detect out of order blocks, and store them for later
-                    if (hash != chainparams.GetConsensus().hashGenesisBlock && !LookupBlockIndex(block.hashPrevBlock)) {
+                    if (hash != chainparams.GetConsensus().hashGenesisBlock && !LookupBlockIndex(header.hashPrevBlock)) {
                         LogPrint(BCLog::REINDEX, "%s: Out of order block %s, parent %s not known\n", __func__, hash.ToString(),
-                                block.hashPrevBlock.ToString());
+                                header.hashPrevBlock.ToString());
                         if (dbp)
-                            mapBlocksUnknownParent.insert(std::make_pair(block.hashPrevBlock, *dbp));
+                            mapBlocksUnknownParent.insert(std::make_pair(header.hashPrevBlock, *dbp));
+
+                        // Position to the start of the next block.
+                        nRewind = nBlockPos + nSize;
+                        blkdat.SetLimit(nRewind);
+                        blkdat.Skip(nRewind - blkdat.GetPos());
                         continue;
                     }
+
+                    // This block can be processed immediately; rewind to its start then read it.
+                    blkdat.SetPos(nBlockPos);
+                    blkdat.SetLimit(nBlockPos + nSize);
+                    std::shared_ptr<CBlock> pblock = std::make_shared<CBlock>();
+                    CBlock& block = *pblock;
+                    blkdat >> block;
+                    nRewind = blkdat.GetPos();
 
                     // process in case the block isn't known yet
                     CBlockIndex* pindex = LookupBlockIndex(hash);
