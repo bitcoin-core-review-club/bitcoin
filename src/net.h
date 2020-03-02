@@ -11,8 +11,10 @@
 #include <amount.h>
 #include <bloom.h>
 #include <compat.h>
+#include <crypto/chacha_poly_aead.h>
 #include <crypto/siphash.h>
 #include <hash.h>
+#include <key.h>
 #include <limitedmap.h>
 #include <netaddress.h>
 #include <net_permissions.h>
@@ -698,6 +700,54 @@ public:
     CNetMessage GetMessage(const CMessageHeader::MessageStartChars& message_start, int64_t time) override;
 };
 
+// V2TransportDeserializer is a transport deserializer after BIP324
+class V2TransportDeserializer : public TransportDeserializer
+{
+private:
+    std::unique_ptr<ChaCha20Poly1305AEAD> m_aead;
+    uint64_t m_payload_seqnr = 0; // sequence number for the payload
+    uint64_t m_aad_seqnr = 0;     // sequence number for the packet length (AD)
+    int m_aad_pos = 0;            // position in the aad keystream
+    bool m_in_data = false;       // parsing header (false) or data (true)
+    uint32_t m_message_size = 0;  // expected message size
+    CDataStream vRecv;            // received message data
+    unsigned int m_hdr_pos = 0;   // read pos in header
+    unsigned int m_data_pos = 0;  // read pos in data
+
+public:
+    V2TransportDeserializer(const CPrivKey& k1, const CPrivKey& k2) : m_aead(new ChaCha20Poly1305AEAD(k1.data(), k1.size(), k2.data(), k2.size())), vRecv(SER_NETWORK, INIT_PROTO_VERSION)
+    {
+        Reset();
+    }
+
+    void Reset()
+    {
+        vRecv.clear();
+        vRecv.resize(CHACHA20_POLY1305_AEAD_AAD_LEN);
+        m_in_data = false;
+        m_hdr_pos = 0;
+        m_message_size = 0;
+        m_data_pos = 0;
+    }
+    bool Complete() const
+    {
+        if (!m_in_data) {
+            return false;
+        }
+        return (m_message_size + CHACHA20_POLY1305_AEAD_TAG_LEN == m_data_pos);
+    }
+    void SetVersion(int nVersionIn)
+    {
+        vRecv.SetVersion(nVersionIn);
+    }
+    bool OversizedMessageDetected() const
+    {
+        return (m_in_data && m_message_size > MAX_PROTOCOL_MESSAGE_LENGTH);
+    }
+    int Read(const char* pch, unsigned int nBytes);
+    CNetMessage GetMessage(const CMessageHeader::MessageStartChars& message_start, int64_t time);
+};
+
 /** The TransportSerializer prepares messages for the network transport
  */
 class TransportSerializer {
@@ -710,6 +760,24 @@ public:
 class V1TransportSerializer  : public TransportSerializer {
 public:
     void prepareForTransport(CSerializedNetMsg& msg, std::vector<unsigned char>& header) override;
+};
+
+class V2TransportSerializer : public TransportSerializer
+{
+private:
+    std::unique_ptr<ChaCha20Poly1305AEAD> m_aead;
+    CPrivKey m_aead_k1; //keep the keys for a later rekeying
+    CPrivKey m_aead_k2;
+    uint64_t m_payload_seqnr = 0;
+    uint64_t m_aad_seqnr = 0;
+    int m_aad_pos = 0;
+
+public:
+    V2TransportSerializer(const CPrivKey& k1, const CPrivKey& k2) : m_aead(new ChaCha20Poly1305AEAD(k1.data(), k1.size(), k2.data(), k2.size())), m_aead_k1(k1), m_aead_k2(k2)
+    {
+    }
+    // prepare for next message
+    void prepareForTransport(CSerializedNetMsg& msg, std::vector<unsigned char>& header);
 };
 
 /** Information about a peer */
