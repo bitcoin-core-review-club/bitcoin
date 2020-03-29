@@ -3,6 +3,7 @@
 # Distributed under the MIT software license, see the accompanying
 # file COPYING or http://www.opensource.org/licenses/mit-license.php.
 """Test bitcoin-cli"""
+from decimal import Decimal
 from test_framework.test_framework import BitcoinTestFramework
 from test_framework.util import assert_equal, assert_raises_process_error, get_auth_cookie
 
@@ -53,8 +54,6 @@ class TestBitcoinCli(BitcoinTestFramework):
 
         self.log.info("Compare responses from `bitcoin-cli -getinfo` and the RPCs data is retrieved from.")
         cli_get_info = self.nodes[0].cli('-getinfo').send_cli()
-        if self.is_wallet_compiled():
-            wallet_info = self.nodes[0].getwalletinfo()
         network_info = self.nodes[0].getnetworkinfo()
         blockchain_info = self.nodes[0].getblockchaininfo()
 
@@ -66,7 +65,9 @@ class TestBitcoinCli(BitcoinTestFramework):
         assert_equal(cli_get_info['difficulty'], blockchain_info['difficulty'])
         assert_equal(cli_get_info['chain'], blockchain_info['chain'])
         if self.is_wallet_compiled():
-            assert_equal(cli_get_info['balance'], wallet_info['balance'])
+            assert_equal(cli_get_info['balances'], {'': Decimal('0E-8')})
+            assert_equal(cli_get_info['balances'], self.nodes[0].getwalletbalances())
+            wallet_info = self.nodes[0].getwalletinfo()
             assert_equal(cli_get_info['keypoolsize'], wallet_info['keypoolsize'])
             assert_equal(cli_get_info['paytxfee'], wallet_info['paytxfee'])
             assert_equal(cli_get_info['relayfee'], network_info['relayfee'])

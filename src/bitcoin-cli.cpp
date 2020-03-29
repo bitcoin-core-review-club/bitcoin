@@ -240,7 +240,7 @@ public:
         result.push_back(JSONRPCRequestObj("getnetworkinfo", NullUniValue, ID_NETWORKINFO));
         result.push_back(JSONRPCRequestObj("getblockchaininfo", NullUniValue, ID_BLOCKCHAININFO));
         result.push_back(JSONRPCRequestObj("getwalletinfo", NullUniValue, ID_WALLETINFO));
-        result.push_back(JSONRPCRequestObj("getbalances", NullUniValue, ID_BALANCESINFO));
+        result.push_back(JSONRPCRequestObj("getwalletbalances", NullUniValue, ID_BALANCESINFO));
         return result;
     }
 
@@ -250,7 +250,7 @@ public:
         UniValue result(UniValue::VOBJ);
         std::vector<UniValue> batch = JSONRPCProcessBatchReply(batch_in, 4);
         // Errors in getnetworkinfo() and getblockchaininfo() are fatal, pass them on;
-        // getwalletinfo() and getbalances() are allowed to fail if there is no wallet.
+        // getwalletinfo() and getwalletbalances() are allowed to fail if there is no wallet.
         if (!batch[ID_NETWORKINFO]["error"].isNull()) {
             return batch[ID_NETWORKINFO];
         }
@@ -274,7 +274,7 @@ public:
             result.pushKV("paytxfee", batch[ID_WALLETINFO]["result"]["paytxfee"]);
         }
         if (!batch[ID_BALANCESINFO]["result"].isNull()) {
-            result.pushKV("balance", batch[ID_BALANCESINFO]["result"]["mine"]["trusted"]);
+            result.pushKV("balances", batch[ID_BALANCESINFO]["result"]);
         }
         result.pushKV("relayfee", batch[ID_NETWORKINFO]["result"]["relayfee"]);
         result.pushKV("warnings", batch[ID_NETWORKINFO]["result"]["warnings"]);
