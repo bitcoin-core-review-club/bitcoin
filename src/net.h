@@ -26,6 +26,7 @@
 
 #include <atomic>
 #include <deque>
+#include <map>
 #include <stdint.h>
 #include <thread>
 #include <memory>
@@ -251,7 +252,12 @@ public:
     void SetServices(const CService &addr, ServiceFlags nServices);
     void MarkAddressGood(const CAddress& addr);
     void AddNewAddresses(const std::vector<CAddress>& vAddr, const CAddress& addrFrom, int64_t nTimePenalty = 0);
-    std::vector<CAddress> GetAddresses();
+
+    // Cache is used to minimize topology leaks, so it should
+    // be used for all non-trusted calls, for example, p2p.
+    // A non-malicious call (from RPC)
+    // should avoid using the cache by passing nullopt.
+    std::vector<CAddress> GetAddresses(Optional<Network> requestor_network);
 
     // This allows temporarily exceeding m_max_outbound_full_relay, with the goal of finding
     // a peer that is better than all our current peers.
@@ -415,6 +421,22 @@ private:
     mutable RecursiveMutex cs_vNodes;
     std::atomic<NodeId> nLastNodeId{0};
     unsigned int nPrevNodeCount{0};
+
+    // Cache responses to addr requests to minimize privacy leak.
+    // Attack example: scraping addrs in real-time may allow an attacker
+    // to infer new connections of the victim by detecting new records
+    // with fresh timestamps (per self-announcement).
+    struct CachedAddrResponse {
+        std::vector<CAddress> m_addrs_response_cache;
+        std::chrono::microseconds m_update_addr_response{0};
+    };
+
+    // Addr responses stored in different caches
+    // per network prevent cross-network node identification.
+    // If a node for example is multi-homed under Tor and IPv6,
+    // a single cache (or no cache at all) would let an attacker
+    // to easily detect that it is the same node by comparing responses.
+    std::map<Network, CachedAddrResponse> m_addr_response_caches;
 
     /**
      * Services this instance offers.

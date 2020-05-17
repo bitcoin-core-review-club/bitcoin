@@ -3329,7 +3329,8 @@ bool ProcessMessage(CNode& pfrom, const std::string& msg_type, CDataStream& vRec
         pfrom.fSentAddr = true;
 
         pfrom.vAddrToSend.clear();
-        std::vector<CAddress> vAddr = connman->GetAddresses();
+        Network peer_network = pfrom.addr.GetNetwork();
+        std::vector<CAddress> vAddr = connman->GetAddresses(peer_network);
         FastRandomContext insecure_rand;
         for (const CAddress &addr : vAddr) {
             if (!banman->IsBanned(addr)) {
