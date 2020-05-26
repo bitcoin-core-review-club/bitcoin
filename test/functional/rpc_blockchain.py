@@ -241,6 +241,10 @@ class BlockchainTest(BitcoinTestFramework):
         del res['disk_size'], res3['disk_size']
         assert_equal(res, res3)
 
+        self.log.info("Test that gettxoutsetinfo() works with legacy utxo set hash")
+        res4 = node.gettxoutsetinfo(True)
+        assert(res['utxo_set_hash'] != res4['utxo_set_hash'])
+
     def _test_getblockheader(self):
         node = self.nodes[0]
 
