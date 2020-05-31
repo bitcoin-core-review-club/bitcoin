@@ -44,6 +44,10 @@ from test_framework.mininode import (
     P2PInterface,
 )
 
+from test_framework.muhash import (
+    MuHash3072,
+)
+
 
 class BlockchainTest(BitcoinTestFramework):
     def set_test_params(self):
@@ -240,6 +244,15 @@ class BlockchainTest(BitcoinTestFramework):
         # compared between res and res3.  Everything else should be the same.
         del res['disk_size'], res3['disk_size']
         assert_equal(res, res3)
+
+        self.log.info("Test that MuHash implementation in Python returns the same result as C++")
+        muhash = MuHash3072()
+        muhash.insert([0]*32)
+        muhash.insert([1] + [0]*31)
+        muhash.remove([2] + [0]*31)
+        finalized = muhash.digest()
+        # This mirrors the result in the C++ MuHash3072 unit test
+        assert_equal(finalized[::-1].hex(), "0e94c56c180f27fd6b182f091c5b007e2d6eba5ae28daa5aa92d2af8c26ea9a6")
 
     def _test_getblockheader(self):
         node = self.nodes[0]

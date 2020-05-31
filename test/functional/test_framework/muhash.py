@@ -52,8 +52,7 @@ def chacha20_32_to_384(key32):
 
 def data_to_num3072(data):
     """Map a byte array data to a 3072-bit number."""
-    key32 = hashlib.sha512(data).digest()[0:32]
-    bytes384 = chacha20_32_to_384(key32)
+    bytes384 = chacha20_32_to_384(data)
     return int.from_bytes(bytes384, 'little')
 
 class MuHash3072:
