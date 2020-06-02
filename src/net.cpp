@@ -1152,6 +1152,37 @@ void CConnman::AcceptConnection(const ListenSocket& hListenSocket) {
     RandAddEvent((uint32_t)id);
 }
 
+bool CConnman::AddConnection(const std::string& address, const ConnectionType conn_type)
+{
+    assert(conn_type == ConnectionType::OUTBOUND_FULL_RELAY || conn_type == ConnectionType::BLOCK_RELAY);
+
+    int outbound_full_relay = 0;
+    int outbound_block_relay = 0;
+
+    {
+        // count existing connections for each type
+        LOCK(cs_vNodes);
+        for (const CNode* pnode : vNodes) {
+            if (pnode->m_conn_type == ConnectionType::OUTBOUND_FULL_RELAY) {
+                ++outbound_full_relay;
+            } else if (pnode->m_conn_type == ConnectionType::BLOCK_RELAY) {
+                ++outbound_block_relay;
+            }
+        }
+    }
+
+    // max connections of specified type already exist
+    if (conn_type == ConnectionType::OUTBOUND_FULL_RELAY && outbound_full_relay >= m_max_outbound_full_relay) return false;
+    if (conn_type == ConnectionType::BLOCK_RELAY && outbound_block_relay >= m_max_outbound_block_relay) return false;
+
+    // max total outbound connections already exist
+    CSemaphoreGrant grant(*semOutbound, true);
+    if (!grant) return false;
+
+    OpenNetworkConnection(CAddress(), false, &grant, address.c_str(), conn_type);
+    return true;
+}
+
 void CConnman::DisconnectNodes()
 {
     {

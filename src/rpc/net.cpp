@@ -5,6 +5,7 @@
 #include <rpc/server.h>
 
 #include <banman.h>
+#include <chainparams.h>
 #include <clientversion.h>
 #include <core_io.h>
 #include <net.h>
@@ -318,6 +319,61 @@ static RPCHelpMan addnode()
     }
 
     return NullUniValue;
+},
+    };
+}
+
+static RPCHelpMan addconnection()
+{
+    return RPCHelpMan{"addconnection",
+        "\nOpen an outbound connection to a specified node. This RPC is for testing only.\n",
+        {
+            {"address", RPCArg::Type::STR, RPCArg::Optional::NO, "The IP address and port to attempt connecting to."},
+            {"connectiontype", RPCArg::Type::STR, RPCArg::Optional::NO, "'outbound' or 'blockrelay'."},
+        },
+        RPCResult{
+            RPCResult::Type::OBJ, "", "",
+            {
+                { RPCResult::Type::STR, "address", "Address of newly added connection." },
+                { RPCResult::Type::STR, "connectiontype", "Type of connection opened." },
+            }},
+        RPCExamples{
+            HelpExampleCli("addconnection", "\"192.168.0.6:8333\" \"outbound\"")
+            + HelpExampleRpc("addconnection", "\"192.168.0.6:8333\" \"outbound\"")
+        },
+        [&](const RPCHelpMan& self, const JSONRPCRequest& request) -> UniValue
+{
+    if (!Params().IsMockableChain()) {
+        throw std::runtime_error("addconnection is for regression testing (-regtest mode) only.");
+    }
+
+    RPCTypeCheck(request.params, {UniValue::VSTR, UniValue::VSTR});
+    const std::string address = request.params[0].get_str();
+    const std::string conn_type_in = request.params[1].get_str();
+    ConnectionType conn_type{};
+    if (conn_type_in == "outbound") {
+        conn_type = ConnectionType::OUTBOUND_FULL_RELAY;
+    } else if (conn_type_in == "blockrelay") {
+        conn_type = ConnectionType::BLOCK_RELAY;
+    } else {
+        throw std::runtime_error(self.ToString());
+    }
+
+    NodeContext& context = EnsureNodeContext(request.context);
+    if (!context.connman) {
+        throw JSONRPCError(RPC_CLIENT_P2P_DISABLED, "Error: Peer-to-peer functionality missing or disabled.");
+    }
+
+    const bool success = context.connman->AddConnection(address, conn_type);
+    if (!success) {
+        throw JSONRPCError(RPC_CLIENT_NODE_CAPACITY_REACHED, "Error: Already at capacity for specified connection type.");
+    }
+
+    UniValue info(UniValue::VOBJ);
+    info.pushKV("address", address);
+    info.pushKV("connectiontype", conn_type_in);
+
+    return info;
 },
     };
 }
@@ -908,7 +964,9 @@ static const CRPCCommand commands[] =
     { "network",            "clearbanned",            &clearbanned,            {} },
     { "network",            "setnetworkactive",       &setnetworkactive,       {"state"} },
     { "network",            "getnodeaddresses",       &getnodeaddresses,       {"count"} },
+
     { "hidden",             "addpeeraddress",         &addpeeraddress,         {"address", "port"} },
+    { "hidden",             "addconnection",          &addconnection,          {"address", "connectiontype"} },
 };
 // clang-format on
     for (const auto& c : commands) {
