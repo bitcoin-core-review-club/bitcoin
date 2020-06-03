@@ -975,6 +975,7 @@ void CConnman::AcceptConnection(const ListenSocket& hListenSocket) {
         if (gArgs.GetBoolArg("-whitelistrelay", DEFAULT_WHITELISTRELAY)) NetPermissions::AddFlag(permissionFlags, PF_RELAY);
         NetPermissions::AddFlag(permissionFlags, PF_MEMPOOL);
         NetPermissions::AddFlag(permissionFlags, PF_NOBAN);
+        NetPermissions::AddFlag(permissionFlags, PF_ADDR);
         legacyWhitelisted = true;
     }
 
@@ -2529,7 +2530,7 @@ std::vector<CAddress> CConnman::GetAddresses(Optional<Network> requestor_network
 {
     if (requestor_network) {
         const std::chrono::microseconds current_time = GetTime<std::chrono::microseconds>();
-        const Network network = requestor_network.get();
+        const Network network = requestor_network.get_value_or(NET_UNROUTABLE);
         if (m_addr_response_caches.find(network) == m_addr_response_caches.end() ||
             m_addr_response_caches[network].m_update_addr_response < current_time) {
             m_addr_response_caches[network].m_addrs_response_cache = addrman.GetAddr();

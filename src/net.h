@@ -255,7 +255,7 @@ public:
 
     // Cache is used to minimize topology leaks, so it should
     // be used for all non-trusted calls, for example, p2p.
-    // A non-malicious call (from RPC)
+    // A non-malicious call (from RPC or a whitelisted node)
     // should avoid using the cache by passing nullopt.
     std::vector<CAddress> GetAddresses(Optional<Network> requestor_network);
 

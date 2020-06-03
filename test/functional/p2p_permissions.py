@@ -39,13 +39,13 @@ class P2PPermissionsTests(BitcoinTestFramework):
         self.checkpermission(
             # default permissions (no specific permissions)
             ["-whitelist=127.0.0.1"],
-            ["relay", "noban", "mempool"],
+            ["relay", "noban", "mempool", "addr"],
             True)
 
         self.checkpermission(
             # relay permission removed (no specific permissions)
             ["-whitelist=127.0.0.1", "-whitelistrelay=0"],
-            ["noban", "mempool"],
+            ["noban", "mempool", "addr"],
             True)
 
         self.checkpermission(
@@ -53,7 +53,7 @@ class P2PPermissionsTests(BitcoinTestFramework):
             # Legacy parameter interaction which set whitelistrelay to true
             # if whitelistforcerelay is true
             ["-whitelist=127.0.0.1", "-whitelistforcerelay"],
-            ["forcerelay", "relay", "noban", "mempool"],
+            ["forcerelay", "relay", "noban", "mempool", "addr"],
             True)
 
         # Let's make sure permissions are merged correctly
@@ -89,7 +89,7 @@ class P2PPermissionsTests(BitcoinTestFramework):
         self.checkpermission(
             # all permission added
             ["-whitelist=all@127.0.0.1"],
-            ["forcerelay", "noban", "mempool", "bloomfilter", "relay"],
+            ["forcerelay", "noban", "mempool", "bloomfilter", "relay", "addr"],
             False)
 
         self.stop_node(1)
