@@ -1697,6 +1697,22 @@ void static ProcessGetData(CNode& pfrom, const CChainParams& chainparams, CConnm
             int nSendFlags = (inv.type == MSG_TX ? SERIALIZE_TRANSACTION_NO_WITNESS : 0);
             connman->PushMessage(&pfrom, msgMaker.Make(nSendFlags, NetMsgType::TX, *tx));
             mempool.RemoveUnbroadcastTx(inv.hash);
+            // As we're going to send tx, make sure its unconfirmed parents are made requestable.
+            for (const auto& txin : tx->vin) {
+                auto txinfo = mempool.info(txin.prevout.hash);
+                if (txinfo.tx && txinfo.m_time > now - UNCONDITIONAL_RELAY_DELAY) {
+                    // Relaying a transaction with a recent but unconfirmed parent.
+                    bool add = true;
+                    {
+                        LOCK(pfrom.m_tx_relay->cs_tx_inventory);
+                        add = !pfrom.m_tx_relay->filterInventoryKnown.contains(txin.prevout.hash);
+                    }
+                    if (add) {
+                        LOCK(cs_main);
+                        State(pfrom.GetId())->m_recently_announced_invs.insert(txin.prevout.hash);
+                    }
+                }
+            }
         } else {
             vNotFound.push_back(inv);
         }
