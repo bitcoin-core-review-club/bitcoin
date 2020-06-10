@@ -71,6 +71,7 @@ class TestNode():
         """
 
         self.index = i
+        self.p2p_conn_index = 1
         self.datadir = datadir
         self.bitcoinconf = os.path.join(self.datadir, "bitcoin.conf")
         self.stdout_dir = os.path.join(self.datadir, "stdout")
@@ -337,6 +338,9 @@ class TestNode():
 
         del self.p2ps[:]
 
+        # reset the index for outbound p2p connections
+        self.p2p_conn_index = 1
+
     def is_node_stopped(self):
         """Checks whether the node has stopped.
 
@@ -513,7 +517,7 @@ class TestNode():
                 self._raise_assertion_error(assert_msg)
 
     def add_p2p_connection(self, p2p_conn, *, wait_for_verack=True, **kwargs):
-        """Add a p2p connection to the node.
+        """Add an inbound p2p connection to the node.
 
         This method adds the p2p connection to the self.p2ps list and also
         returns the connection to the caller."""
@@ -542,6 +546,29 @@ class TestNode():
 
         return p2p_conn
 
+    def add_outbound_p2p_connection(self, p2p_conn, *, connection_type="outbound", **kwargs):
+        """Add an outbound p2p connection from node. Either
+        full-relay("outbound") or block-relay-only("blockrelay") connection.
+
+        This method adds the p2p connection to the self.p2ps list and also
+        returns the connection to the caller.
+        """
+
+        def addconnection_callback(address, port):
+            self.log.debug("Connecting to %s:%d %s" % (address, port, connection_type))
+            self.addconnection('%s:%d' % (address, port), connection_type)
+
+        p2p_conn.peer_accept_connection(connect_cb=addconnection_callback, connect_id=self.p2p_conn_index, net=self.chain, timeout_factor=self.timeout_factor, **kwargs)()
+        self.p2p_conn_index += 1
+
+        p2p_conn.wait_for_connect()
+        self.p2ps.append(p2p_conn)
+
+        p2p_conn.wait_for_verack()
+        p2p_conn.sync_with_ping()
+
+        return p2p_conn
+
     def num_test_p2p_connections(self):
         """Return number of test framework p2p connections to the node."""
         return len([peer for peer in self.getpeerinfo() if peer['subver'] == MY_SUBVERSION])
@@ -551,6 +578,9 @@ class TestNode():
         for p in self.p2ps:
             p.peer_disconnect()
         del self.p2ps[:]
+
+        # reset connection index for outbound p2ps
+        self.p2p_conn_index = 1
         wait_until_helper(lambda: self.num_test_p2p_connections() == 0, timeout_factor=self.timeout_factor)
 
 
