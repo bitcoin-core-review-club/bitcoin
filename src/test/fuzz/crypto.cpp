@@ -4,6 +4,7 @@
 
 #include <crypto/hmac_sha256.h>
 #include <crypto/hmac_sha512.h>
+#include <crypto/muhash.h>
 #include <crypto/ripemd160.h>
 #include <crypto/sha1.h>
 #include <crypto/sha256.h>
@@ -35,6 +36,7 @@ void test_one_input(const std::vector<uint8_t>& buffer)
     CSHA512 sha512;
     SHA3_256 sha3;
     CSipHasher sip_hasher{fuzzed_data_provider.ConsumeIntegral<uint64_t>(), fuzzed_data_provider.ConsumeIntegral<uint64_t>()};
+    MuHash3072 muhash;
 
     while (fuzzed_data_provider.ConsumeBool()) {
         switch (fuzzed_data_provider.ConsumeIntegralInRange<int>(0, 2)) {
@@ -60,6 +62,16 @@ void test_one_input(const std::vector<uint8_t>& buffer)
             (void)Hash(data);
             (void)Hash160(data);
             (void)sha512.Size();
+
+            // MuHash3072 only accepts a fixed key length of 32 bytes
+            std::vector<uint8_t> muhash_data = data;
+            muhash_data.resize(32);
+
+            if (fuzzed_data_provider.ConsumeBool()) {
+                muhash *= MuHash3072(muhash_data);
+            } else {
+                muhash /= MuHash3072(muhash_data);
+            }
             break;
         }
         case 1: {
@@ -70,10 +82,11 @@ void test_one_input(const std::vector<uint8_t>& buffer)
             (void)sha256.Reset();
             (void)sha3.Reset();
             (void)sha512.Reset();
+            muhash = MuHash3072();
             break;
         }
         case 2: {
-            switch (fuzzed_data_provider.ConsumeIntegralInRange<int>(0, 9)) {
+            switch (fuzzed_data_provider.ConsumeIntegralInRange<int>(0, 10)) {
             case 0: {
                 data.resize(CHash160::OUTPUT_SIZE);
                 hash160.Finalize(data);
@@ -122,6 +135,11 @@ void test_one_input(const std::vector<uint8_t>& buffer)
             case 9: {
                 data.resize(SHA3_256::OUTPUT_SIZE);
                 sha3.Finalize(data);
+                break;
+            }
+            case 10: {
+                data.resize(384);
+                muhash.Finalize(data);
                 break;
             }
             }
