@@ -3839,6 +3839,10 @@ bool PeerLogicValidation::ProcessMessages(CNode* pfrom, std::atomic<bool>& inter
     }
     CNetMessage& msg(msgs.front());
 
+    if (gArgs.IsArgSet("-logmessages")) {
+        LogMessage(*pfrom, msg.m_command, MakeUCharSpan(msg.m_recv), /* incoming */ true);
+    }
+
     msg.SetVersion(pfrom->GetRecvVersion());
     // Check network magic
     if (!msg.m_valid_netmagic) {

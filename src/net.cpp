@@ -2831,6 +2831,9 @@ void CConnman::PushMessage(CNode* pnode, CSerializedNetMsg&& msg)
         pnode->nSendSize += nTotalSize;
 
         if (pnode->nSendSize > nSendBufferMaxSize) pnode->fPauseSend = true;
+        if (gArgs.IsArgSet("-logmessages")) {
+            LogMessage(*pnode, msg.m_type, MakeSpan(msg.data), /* incoming */ false);
+        }
         pnode->vSendMsg.push_back(std::move(serializedHeader));
         if (nMessageSize) pnode->vSendMsg.push_back(std::move(msg.data));
 
