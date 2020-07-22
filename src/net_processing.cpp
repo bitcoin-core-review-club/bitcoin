@@ -3825,14 +3825,12 @@ bool PeerLogicValidation::ProcessMessages(CNode* pfrom, std::atomic<bool>& inter
     if (!pfrom->orphan_work_set.empty()) return true;
 
     // Don't bother if send buffer is too full to respond anyway
-    if (pfrom->fPauseSend)
-        return false;
+    if (pfrom->fPauseSend) return false;
 
     std::list<CNetMessage> msgs;
     {
         LOCK(pfrom->cs_vProcessMsg);
-        if (pfrom->vProcessMsg.empty())
-            return false;
+        if (pfrom->vProcessMsg.empty()) return false;
         // Just take one message
         msgs.splice(msgs.begin(), pfrom->vProcessMsg, pfrom->vProcessMsg.begin());
         pfrom->nProcessQueueSize -= msgs.front().m_raw_message_size;
@@ -3850,8 +3848,7 @@ bool PeerLogicValidation::ProcessMessages(CNode* pfrom, std::atomic<bool>& inter
     }
 
     // Check header
-    if (!msg.m_valid_header)
-    {
+    if (!msg.m_valid_header) {
         LogPrint(BCLog::NET, "PROCESSMESSAGE: ERRORS IN HEADER %s peer=%d\n", SanitizeString(msg.m_command), pfrom->GetId());
         return fMoreWork;
     }
@@ -3862,8 +3859,7 @@ bool PeerLogicValidation::ProcessMessages(CNode* pfrom, std::atomic<bool>& inter
 
     // Checksum
     CDataStream& vRecv = msg.m_recv;
-    if (!msg.m_valid_checksum)
-    {
+    if (!msg.m_valid_checksum) {
         LogPrint(BCLog::NET, "%s(%s, %u bytes): CHECKSUM ERROR peer=%d\n", __func__,
            SanitizeString(msg_type), nMessageSize, pfrom->GetId());
         return fMoreWork;
