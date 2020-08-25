@@ -27,5 +27,5 @@ void test_one_input(const std::vector<uint8_t>& buffer)
         return;
     }
     FlatFilePos flat_file_pos;
-    LoadExternalBlockFile(Params(), fuzzed_block_file, fuzzed_data_provider.ConsumeBool() ? &flat_file_pos : nullptr);
+    ::ChainstateActive().LoadExternalBlockFile(Params(), fuzzed_block_file, fuzzed_data_provider.ConsumeBool() ? &flat_file_pos : nullptr);
 }
