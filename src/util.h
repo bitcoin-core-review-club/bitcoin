@@ -170,13 +170,24 @@ static SECP256K1_INLINE void *manual_alloc(void** prealloc_ptr, size_t alloc_siz
 # define I64uFORMAT "llu"
 #endif
 
-#if defined(HAVE___INT128)
-# if defined(__GNUC__)
-#  define SECP256K1_GNUC_EXT __extension__
-# else
-#  define SECP256K1_GNUC_EXT
+#if defined(__GNUC__)
+# define SECP256K1_GNUC_EXT __extension__
+#else
+# define SECP256K1_GNUC_EXT
+#endif
+
+#if defined(__BYTE_ORDER__)
+# if defined(__ORDER_LITTLE_ENDIAN__) && __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__ && !defined(SECP256K1_LITTLE_ENDIAN)
+#  define SECP256K1_LITTLE_ENDIAN
+# elif defined(__ORDER_BIG_ENDIAN__) && __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__ && !defined(SECP256K1_BIG_ENDIAN)
+#  define SECP256K1_BIG_ENDIAN
 # endif
-SECP256K1_GNUC_EXT typedef unsigned __int128 uint128_t;
+#endif
+#if defined(_MSC_VER) && defined(_WIN32) && !defined(SECP256K1_LITTLE_ENDIAN)
+# define SECP256K1_LITTLE_ENDIAN
+#endif
+#if defined(SECP256K1_LITTLE_ENDIAN) == defined(SECP256K1_BIG_ENDIAN)
+# error Please make sure that either SECP256K1_LITTLE_ENDIAN or SECP256K1_BIG_ENDIAN is set, see src/util.h.
 #endif
 
 /* Zero memory if flag == 1. Flag must be 0 or 1. Constant time. */
@@ -197,15 +208,37 @@ static SECP256K1_INLINE void memczero(void *s, size_t len, int flag) {
 /** If flag is true, set *r equal to *a; otherwise leave it. Constant-time.  Both *r and *a must be initialized and non-negative.*/
 static SECP256K1_INLINE void secp256k1_int_cmov(int *r, const int *a, int flag) {
     unsigned int mask0, mask1, r_masked, a_masked;
+    /* Access flag with a volatile-qualified lvalue.
+       This prevents clang from figuring out (after inlining) that flag can
+       take only be 0 or 1, which leads to variable time code. */
+    volatile int vflag = flag;
+
     /* Casting a negative int to unsigned and back to int is implementation defined behavior */
     VERIFY_CHECK(*r >= 0 && *a >= 0);
 
-    mask0 = (unsigned int)flag + ~0u;
+    mask0 = (unsigned int)vflag + ~0u;
     mask1 = ~mask0;
     r_masked = ((unsigned int)*r & mask0);
     a_masked = ((unsigned int)*a & mask1);
 
     *r = (int)(r_masked | a_masked);
 }
+
+/* If USE_FORCE_WIDEMUL_{INT128,INT64} is set, use that wide multiplication implementation.
+ * Otherwise use the presence of __SIZEOF_INT128__ to decide.
+ */
+#if defined(USE_FORCE_WIDEMUL_INT128)
+# define SECP256K1_WIDEMUL_INT128 1
+#elif defined(USE_FORCE_WIDEMUL_INT64)
+# define SECP256K1_WIDEMUL_INT64 1
+#elif defined(__SIZEOF_INT128__)
+# define SECP256K1_WIDEMUL_INT128 1
+#else
+# define SECP256K1_WIDEMUL_INT64 1
+#endif
+#if defined(SECP256K1_WIDEMUL_INT128)
+SECP256K1_GNUC_EXT typedef unsigned __int128 uint128_t;
+SECP256K1_GNUC_EXT typedef __int128 int128_t;
+#endif
 
 #endif /* SECP256K1_UTIL_H */
