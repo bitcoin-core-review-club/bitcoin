@@ -2491,6 +2491,8 @@ void PeerManager::ProcessMessage(CNode& pfrom, const std::string& msg_type, CDat
             // connections via the addrman or address relay.
             if (fListen && !::ChainstateActive().IsInitialBlockDownload()) {
                 AdvertiseLocal(pfrom);
+                const auto current_time = GetTime<std::chrono::microseconds>();
+                pfrom.m_next_local_addr_send = PoissonNextSend(current_time, AVG_LOCAL_ADDRESS_BROADCAST_INTERVAL);
             }
 
             // Get recent addresses
