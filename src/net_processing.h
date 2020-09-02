@@ -135,6 +135,10 @@ private:
     CTxMemPool& m_mempool;
 
     int64_t m_stale_tip_check_time; //!< Next time to check for stale tip
+
+    /** Whether we've completed initial sync yet, for determining when to turn
+      * on extra block-relay-only peers. */
+    bool m_initial_sync_finished{false};
 };
 
 struct CNodeStateStats {
