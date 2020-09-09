@@ -175,17 +175,17 @@ TestingSetup::TestingSetup(const std::string& chainName, const std::vector<const
     m_node.mempool->setSanityCheck(1.0);
 
     m_node.chainman->InitializeChainstate(*m_node.mempool);
-    ::ChainstateActive().InitCoinsDB(
+    m_node.chainman->ActiveChainstate().InitCoinsDB(
         /* cache_size_bytes */ 1 << 23, /* in_memory */ true, /* should_wipe */ false);
-    assert(!::ChainstateActive().CanFlushToDisk());
-    ::ChainstateActive().InitCoinsCache(1 << 23);
-    assert(::ChainstateActive().CanFlushToDisk());
-    if (!::ChainstateActive().LoadGenesisBlock(chainparams)) {
+    assert(!m_node.chainman->ActiveChainstate().CanFlushToDisk());
+    m_node.chainman->ActiveChainstate().InitCoinsCache(1 << 23);
+    assert(m_node.chainman->ActiveChainstate().CanFlushToDisk());
+    if (!m_node.chainman->ActiveChainstate().LoadGenesisBlock(chainparams)) {
         throw std::runtime_error("LoadGenesisBlock failed.");
     }
 
     BlockValidationState state;
-    if (!::ChainstateActive().ActivateBestChain(state, chainparams)) {
+    if (!m_node.chainman->ActiveChainstate().ActivateBestChain(state, chainparams)) {
         throw std::runtime_error(strprintf("ActivateBestChain failed. (%s)", state.ToString()));
     }
 
@@ -221,7 +221,7 @@ CBlock TestChain100Setup::CreateAndProcessBlock(const std::vector<CMutableTransa
 {
     const CChainParams& chainparams = Params();
     CTxMemPool empty_pool;
-    CBlock block = BlockAssembler(::ChainstateActive(), empty_pool, chainparams).CreateNewBlock(scriptPubKey)->block;
+    CBlock block = BlockAssembler(m_node.chainman->ActiveChainstate(), empty_pool, chainparams).CreateNewBlock(scriptPubKey)->block;
 
     Assert(block.vtx.size() == 1);
     for (const CMutableTransaction& tx : txns) {
@@ -229,7 +229,7 @@ CBlock TestChain100Setup::CreateAndProcessBlock(const std::vector<CMutableTransa
     }
     {
         LOCK(::cs_main);
-        RegenerateCommitments(block, g_chainman.m_blockman);
+        RegenerateCommitments(block, m_node.chainman->m_blockman);
     }
 
     while (!CheckProofOfWork(block.GetHash(), block.nBits, chainparams.GetConsensus())) ++block.nNonce;
