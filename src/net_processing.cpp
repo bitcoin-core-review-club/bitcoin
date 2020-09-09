@@ -2048,7 +2048,9 @@ void PeerManager::ProcessOrphanTx(std::set<uint256>& orphan_work_set)
             break;
         }
     }
-    m_mempool.check(&::ChainstateActive().CoinsTip());
+    CChainState& active_chainstate = m_chainman.ActiveChainstate();
+    CCoinsViewCache& active_coins_tip = active_chainstate.CoinsTip();
+    m_mempool.check(&active_coins_tip, active_chainstate.m_blockman.GetSpendHeight(active_coins_tip));
 }
 
 /**
@@ -2967,7 +2969,11 @@ void PeerManager::ProcessMessage(CNode& pfrom, const std::string& msg_type, CDat
         // for witness malleation.
         if (!AlreadyHaveTx(GenTxid(/* is_wtxid=*/true, wtxid), m_mempool) &&
             AcceptToMemoryPool(::ChainstateActive(), m_mempool, state, ptx, &lRemovedTxn, false /* bypass_limits */)) {
-            m_mempool.check(&::ChainstateActive().CoinsTip());
+
+            CChainState& active_chainstate = m_chainman.ActiveChainstate();
+            CCoinsViewCache& active_coins_tip = active_chainstate.CoinsTip();
+            m_mempool.check(&active_coins_tip, active_chainstate.m_blockman.GetSpendHeight(active_coins_tip));
+
             // As this version of the transaction was acceptable, we can forget about any
             // requests for it.
             m_txrequest.ForgetTxHash(tx.GetHash());

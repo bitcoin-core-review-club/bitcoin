@@ -2838,7 +2838,9 @@ bool CChainState::ActivateBestChainStep(BlockValidationState& state, const CChai
         // any disconnected transactions back to the mempool.
         UpdateMempoolForReorg(::ChainstateActive(), m_mempool, disconnectpool, true);
     }
-    m_mempool.check(&CoinsTip());
+
+    CCoinsViewCache& active_coins_tip = CoinsTip();
+    m_mempool.check(&active_coins_tip, m_blockman.GetSpendHeight(active_coins_tip));
 
     // Callbacks/notifications for a new best chain.
     if (fInvalidFound)
