@@ -4235,7 +4235,7 @@ bool static LoadBlockIndexDB(ChainstateManager& chainman, const CChainParams& ch
 void CChainState::LoadMempool(const ArgsManager& args)
 {
     if (args.GetArg("-persistmempool", DEFAULT_PERSIST_MEMPOOL)) {
-        ::LoadMempool(m_mempool);
+        ::LoadMempool(m_mempool, ::ChainstateActive());
     }
     m_mempool.SetIsLoaded(!ShutdownRequested());
 }
@@ -5065,7 +5065,7 @@ int VersionBitsTipStateSinceHeight(const Consensus::Params& params, Consensus::D
 
 static const uint64_t MEMPOOL_DUMP_VERSION = 1;
 
-bool LoadMempool(CTxMemPool& pool)
+bool LoadMempool(CTxMemPool& pool, CChainState& active_chainstate)
 {
     const CChainParams& chainparams = Params();
     int64_t nExpiryTimeout = gArgs.GetArg("-mempoolexpiry", DEFAULT_MEMPOOL_EXPIRY) * 60 * 60;
@@ -5106,7 +5106,8 @@ bool LoadMempool(CTxMemPool& pool)
             TxValidationState state;
             if (nTime + nExpiryTimeout > nNow) {
                 LOCK(cs_main);
-                AcceptToMemoryPoolWithTime(chainparams, pool, ::ChainstateActive(), state, tx, nTime,
+                assert(std::addressof(::ChainstateActive()) == std::addressof(active_chainstate));
+                AcceptToMemoryPoolWithTime(chainparams, pool, active_chainstate, state, tx, nTime,
                                            nullptr /* plTxnReplaced */, false /* bypass_limits */,
                                            false /* test_accept */);
                 if (state.IsValid()) {
