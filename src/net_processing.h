@@ -6,7 +6,9 @@
 #ifndef BITCOIN_NET_PROCESSING_H
 #define BITCOIN_NET_PROCESSING_H
 
+#include <blockfilter.h>
 #include <consensus/params.h>
+#include <index/blockfilterindex.h>
 #include <net.h>
 #include <sync.h>
 #include <txrequest.h>
@@ -176,6 +178,27 @@ private:
     TxRequestTracker m_txrequest GUARDED_BY(::cs_main);
 
     int64_t m_stale_tip_check_time; //!< Next time to check for stale tip
+
+    void ProcessBlockAvailability(NodeId nodeid) EXCLUSIVE_LOCKS_REQUIRED(cs_main);
+    void UpdateBlockAvailability(NodeId nodeid, const uint256 &hash) EXCLUSIVE_LOCKS_REQUIRED(cs_main);
+    bool CanDirectFetch(const Consensus::Params &consensusParams) EXCLUSIVE_LOCKS_REQUIRED(cs_main);
+    void FindNextBlocksToDownload(NodeId nodeid, unsigned int count, std::vector<const CBlockIndex*>& vBlocks, NodeId& nodeStaller, const Consensus::Params& consensusParams) EXCLUSIVE_LOCKS_REQUIRED(cs_main);
+    bool BlockRequestAllowed(const CBlockIndex* pindex, const Consensus::Params& consensusParams) EXCLUSIVE_LOCKS_REQUIRED(cs_main);
+    bool AlreadyHaveTx(const GenTxid& gtxid, const CTxMemPool& mempool) EXCLUSIVE_LOCKS_REQUIRED(cs_main);
+    bool AlreadyHaveBlock(const uint256& block_hash) EXCLUSIVE_LOCKS_REQUIRED(cs_main);
+    void ProcessGetBlockData(CNode& pfrom, const CChainParams& chainparams, const CInv& inv, CConnman& connman);
+    void ProcessGetData(CNode& pfrom, Peer& peer, const CChainParams& chainparams, CConnman& connman, CTxMemPool& mempool, const std::atomic<bool>& interruptMsgProc) EXCLUSIVE_LOCKS_REQUIRED(!cs_main, peer.m_getdata_requests_mutex);
+    bool PrepareBlockFilterRequest(CNode& peer, const CChainParams& chain_params,
+                                   BlockFilterType filter_type, uint32_t start_height,
+                                   const uint256& stop_hash, uint32_t max_height_diff,
+                                   const CBlockIndex*& stop_index,
+                                   BlockFilterIndex*& filter_index);
+    void ProcessGetCFilters(CNode& peer, CDataStream& vRecv, const CChainParams& chain_params,
+                                   CConnman& connman);
+    void ProcessGetCFHeaders(CNode& peer, CDataStream& vRecv, const CChainParams& chain_params,
+                                    CConnman& connman);
+    void ProcessGetCFCheckPt(CNode& peer, CDataStream& vRecv, const CChainParams& chain_params,
+                                    CConnman& connman);
 };
 
 struct CNodeStateStats {

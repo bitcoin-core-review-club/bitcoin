@@ -8,11 +8,9 @@
 #include <addrman.h>
 #include <banman.h>
 #include <blockencodings.h>
-#include <blockfilter.h>
 #include <chainparams.h>
 #include <consensus/validation.h>
 #include <hash.h>
-#include <index/blockfilterindex.h>
 #include <merkleblock.h>
 #include <netbase.h>
 #include <netmessagemaker.h>
@@ -539,41 +537,6 @@ static bool MarkBlockAsInFlight(CTxMemPool& mempool, NodeId nodeid, const uint25
     return true;
 }
 
-/** Check whether the last unknown block a peer advertised is not yet known. */
-static void ProcessBlockAvailability(NodeId nodeid) EXCLUSIVE_LOCKS_REQUIRED(cs_main) {
-    CNodeState *state = State(nodeid);
-    assert(state != nullptr);
-
-    if (!state->hashLastUnknownBlock.IsNull()) {
-        const CBlockIndex* pindex = g_chainman.m_blockman.LookupBlockIndex(state->hashLastUnknownBlock);
-        if (pindex && pindex->nChainWork > 0) {
-            if (state->pindexBestKnownBlock == nullptr || pindex->nChainWork >= state->pindexBestKnownBlock->nChainWork) {
-                state->pindexBestKnownBlock = pindex;
-            }
-            state->hashLastUnknownBlock.SetNull();
-        }
-    }
-}
-
-/** Update tracking information about which blocks a peer is assumed to have. */
-static void UpdateBlockAvailability(NodeId nodeid, const uint256 &hash) EXCLUSIVE_LOCKS_REQUIRED(cs_main) {
-    CNodeState *state = State(nodeid);
-    assert(state != nullptr);
-
-    ProcessBlockAvailability(nodeid);
-
-    const CBlockIndex* pindex = g_chainman.m_blockman.LookupBlockIndex(hash);
-    if (pindex && pindex->nChainWork > 0) {
-        // An actually better block was announced.
-        if (state->pindexBestKnownBlock == nullptr || pindex->nChainWork >= state->pindexBestKnownBlock->nChainWork) {
-            state->pindexBestKnownBlock = pindex;
-        }
-    } else {
-        // An unknown block was announced; just assume that the latest one is the best one.
-        state->hashLastUnknownBlock = hash;
-    }
-}
-
 /**
  * When a peer sends us a valid block, instruct it to announce blocks to us
  * using CMPCTBLOCK if possible by adding its nodeid to the end of
@@ -624,11 +587,6 @@ static bool TipMayBeStale(const Consensus::Params &consensusParams) EXCLUSIVE_LO
     return g_last_tip_update < GetTime() - consensusParams.nPowTargetSpacing * 3 && mapBlocksInFlight.empty();
 }
 
-static bool CanDirectFetch(const Consensus::Params &consensusParams) EXCLUSIVE_LOCKS_REQUIRED(cs_main)
-{
-    return ::ChainActive().Tip()->GetBlockTime() > GetAdjustedTime() - consensusParams.nPowTargetSpacing * 20;
-}
-
 static bool PeerHasHeader(CNodeState *state, const CBlockIndex *pindex) EXCLUSIVE_LOCKS_REQUIRED(cs_main)
 {
     if (state->pindexBestKnownBlock && pindex == state->pindexBestKnownBlock->GetAncestor(pindex->nHeight))
@@ -638,9 +596,51 @@ static bool PeerHasHeader(CNodeState *state, const CBlockIndex *pindex) EXCLUSIV
     return false;
 }
 
+} // namespace
+
+/** Check whether the last unknown block a peer advertised is not yet known. */
+void PeerManager::ProcessBlockAvailability(NodeId nodeid) {
+    CNodeState *state = State(nodeid);
+    assert(state != nullptr);
+
+    if (!state->hashLastUnknownBlock.IsNull()) {
+        const CBlockIndex* pindex = g_chainman.m_blockman.LookupBlockIndex(state->hashLastUnknownBlock);
+        if (pindex && pindex->nChainWork > 0) {
+            if (state->pindexBestKnownBlock == nullptr || pindex->nChainWork >= state->pindexBestKnownBlock->nChainWork) {
+                state->pindexBestKnownBlock = pindex;
+            }
+            state->hashLastUnknownBlock.SetNull();
+        }
+    }
+}
+
+/** Update tracking information about which blocks a peer is assumed to have. */
+void PeerManager::UpdateBlockAvailability(NodeId nodeid, const uint256 &hash) {
+    CNodeState *state = State(nodeid);
+    assert(state != nullptr);
+
+    ProcessBlockAvailability(nodeid);
+
+    const CBlockIndex* pindex = g_chainman.m_blockman.LookupBlockIndex(hash);
+    if (pindex && pindex->nChainWork > 0) {
+        // An actually better block was announced.
+        if (state->pindexBestKnownBlock == nullptr || pindex->nChainWork >= state->pindexBestKnownBlock->nChainWork) {
+            state->pindexBestKnownBlock = pindex;
+        }
+    } else {
+        // An unknown block was announced; just assume that the latest one is the best one.
+        state->hashLastUnknownBlock = hash;
+    }
+}
+
+bool PeerManager::CanDirectFetch(const Consensus::Params &consensusParams)
+{
+    return ::ChainActive().Tip()->GetBlockTime() > GetAdjustedTime() - consensusParams.nPowTargetSpacing * 20;
+}
+
 /** Update pindexLastCommonBlock and add not-in-flight missing successors to vBlocks, until it has
  *  at most count entries. */
-static void FindNextBlocksToDownload(NodeId nodeid, unsigned int count, std::vector<const CBlockIndex*>& vBlocks, NodeId& nodeStaller, const Consensus::Params& consensusParams) EXCLUSIVE_LOCKS_REQUIRED(cs_main)
+void PeerManager::FindNextBlocksToDownload(NodeId nodeid, unsigned int count, std::vector<const CBlockIndex*>& vBlocks, NodeId& nodeStaller, const Consensus::Params& consensusParams)
 {
     if (count == 0)
         return;
@@ -726,8 +726,6 @@ static void FindNextBlocksToDownload(NodeId nodeid, unsigned int count, std::vec
         }
     }
 }
-
-} // namespace
 
 void PeerManager::AddTxAnnouncement(const CNode& node, const GenTxid& gtxid, std::chrono::microseconds current_time)
 {
@@ -1115,7 +1113,7 @@ bool PeerManager::MaybePunishNodeForTx(NodeId nodeid, const TxValidationState& s
 // active chain if they are no more than a month older (both in time, and in
 // best equivalent proof of work) than the best header chain we know about and
 // we fully-validated them at some point.
-static bool BlockRequestAllowed(const CBlockIndex* pindex, const Consensus::Params& consensusParams) EXCLUSIVE_LOCKS_REQUIRED(cs_main)
+bool PeerManager::BlockRequestAllowed(const CBlockIndex* pindex, const Consensus::Params& consensusParams)
 {
     AssertLockHeld(cs_main);
     if (::ChainActive().Contains(pindex)) return true;
@@ -1358,7 +1356,7 @@ void PeerManager::BlockChecked(const CBlock& block, const BlockValidationState& 
 //
 
 
-bool static AlreadyHaveTx(const GenTxid& gtxid, const CTxMemPool& mempool) EXCLUSIVE_LOCKS_REQUIRED(cs_main)
+bool PeerManager::AlreadyHaveTx(const GenTxid& gtxid, const CTxMemPool& mempool)
 {
     assert(recentRejects);
     if (::ChainActive().Tip()->GetBlockHash() != hashRecentRejectsChainTip) {
@@ -1389,7 +1387,7 @@ bool static AlreadyHaveTx(const GenTxid& gtxid, const CTxMemPool& mempool) EXCLU
     return recentRejects->contains(hash) || mempool.exists(gtxid);
 }
 
-bool static AlreadyHaveBlock(const uint256& block_hash) EXCLUSIVE_LOCKS_REQUIRED(cs_main)
+bool PeerManager::AlreadyHaveBlock(const uint256& block_hash)
 {
     return g_chainman.m_blockman.LookupBlockIndex(block_hash) != nullptr;
 }
@@ -1448,7 +1446,7 @@ static void RelayAddress(const CAddress& addr, bool fReachable, const CConnman& 
     connman.ForEachNodeThen(std::move(sortfunc), std::move(pushfunc));
 }
 
-void static ProcessGetBlockData(CNode& pfrom, const CChainParams& chainparams, const CInv& inv, CConnman& connman)
+void PeerManager::ProcessGetBlockData(CNode& pfrom, const CChainParams& chainparams, const CInv& inv, CConnman& connman)
 {
     bool send = false;
     std::shared_ptr<const CBlock> a_recent_block;
@@ -1630,7 +1628,7 @@ static CTransactionRef FindTxForGetData(const CTxMemPool& mempool, const CNode& 
     return {};
 }
 
-void static ProcessGetData(CNode& pfrom, Peer& peer, const CChainParams& chainparams, CConnman& connman, CTxMemPool& mempool, const std::atomic<bool>& interruptMsgProc) EXCLUSIVE_LOCKS_REQUIRED(!cs_main, peer.m_getdata_requests_mutex)
+void PeerManager::ProcessGetData(CNode& pfrom, Peer& peer, const CChainParams& chainparams, CConnman& connman, CTxMemPool& mempool, const std::atomic<bool>& interruptMsgProc)
 {
     AssertLockNotHeld(cs_main);
 
@@ -2036,7 +2034,7 @@ void PeerManager::ProcessOrphanTx(std::set<uint256>& orphan_work_set)
  * @param[out]  filter_index    The filter index, if the request can be serviced.
  * @return                      True if the request can be serviced.
  */
-static bool PrepareBlockFilterRequest(CNode& peer, const CChainParams& chain_params,
+bool PeerManager::PrepareBlockFilterRequest(CNode& peer, const CChainParams& chain_params,
                                       BlockFilterType filter_type, uint32_t start_height,
                                       const uint256& stop_hash, uint32_t max_height_diff,
                                       const CBlockIndex*& stop_index,
@@ -2099,7 +2097,7 @@ static bool PrepareBlockFilterRequest(CNode& peer, const CChainParams& chain_par
  * @param[in]   chain_params    Chain parameters
  * @param[in]   connman         Pointer to the connection manager
  */
-static void ProcessGetCFilters(CNode& peer, CDataStream& vRecv, const CChainParams& chain_params,
+void PeerManager::ProcessGetCFilters(CNode& peer, CDataStream& vRecv, const CChainParams& chain_params,
                                CConnman& connman)
 {
     uint8_t filter_type_ser;
@@ -2141,7 +2139,7 @@ static void ProcessGetCFilters(CNode& peer, CDataStream& vRecv, const CChainPara
  * @param[in]   chain_params    Chain parameters
  * @param[in]   connman         Pointer to the connection manager
  */
-static void ProcessGetCFHeaders(CNode& peer, CDataStream& vRecv, const CChainParams& chain_params,
+void PeerManager::ProcessGetCFHeaders(CNode& peer, CDataStream& vRecv, const CChainParams& chain_params,
                                 CConnman& connman)
 {
     uint8_t filter_type_ser;
@@ -2196,7 +2194,7 @@ static void ProcessGetCFHeaders(CNode& peer, CDataStream& vRecv, const CChainPar
  * @param[in]   chain_params    Chain parameters
  * @param[in]   connman         Pointer to the connection manager
  */
-static void ProcessGetCFCheckPt(CNode& peer, CDataStream& vRecv, const CChainParams& chain_params,
+void PeerManager::ProcessGetCFCheckPt(CNode& peer, CDataStream& vRecv, const CChainParams& chain_params,
                                 CConnman& connman)
 {
     uint8_t filter_type_ser;
