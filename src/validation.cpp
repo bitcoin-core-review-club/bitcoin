@@ -1346,20 +1346,22 @@ static void AlertNotify(const std::string& strMessage)
 #endif
 }
 
-static void CheckForkWarningConditions() EXCLUSIVE_LOCKS_REQUIRED(cs_main)
+void CChainState::CheckForkWarningConditions()
 {
     AssertLockHeld(cs_main);
+    assert(std::addressof(::ChainstateActive()) == std::addressof(*this));
+
     // Before we get past initial download, we cannot reliably alert about forks
     // (we assume we don't get stuck on a fork before finishing our initial sync)
-    if (::ChainstateActive().IsInitialBlockDownload())
+    if (IsInitialBlockDownload())
         return;
 
     // If our best fork is no longer within 72 blocks (+/- 12 hours if no one mines it)
     // of our head, drop it
-    if (pindexBestForkTip && ::ChainActive().Height() - pindexBestForkTip->nHeight >= 72)
+    if (pindexBestForkTip && m_chain.Tip()->nHeight - pindexBestForkTip->nHeight >= 72)
         pindexBestForkTip = nullptr;
 
-    if (pindexBestForkTip || (pindexBestInvalid && pindexBestInvalid->nChainWork > ::ChainActive().Tip()->nChainWork + (GetBlockProof(*::ChainActive().Tip()) * 6)))
+    if (pindexBestForkTip || (pindexBestInvalid && pindexBestInvalid->nChainWork > m_chain.Tip()->nChainWork + (GetBlockProof(*m_chain.Tip()) * 6)))
     {
         if (!GetfLargeWorkForkFound() && pindexBestForkBase)
         {
@@ -1387,12 +1389,13 @@ static void CheckForkWarningConditions() EXCLUSIVE_LOCKS_REQUIRED(cs_main)
     }
 }
 
-static void CheckForkWarningConditionsOnNewFork(CBlockIndex* pindexNewForkTip) EXCLUSIVE_LOCKS_REQUIRED(cs_main)
+void CChainState::CheckForkWarningConditionsOnNewFork(CBlockIndex* pindexNewForkTip)
 {
     AssertLockHeld(cs_main);
+    assert(std::addressof(::ChainstateActive()) == std::addressof(*this));
     // If we are on a fork that is sufficiently large, set a warning flag
     CBlockIndex* pfork = pindexNewForkTip;
-    CBlockIndex* plonger = ::ChainActive().Tip();
+    CBlockIndex* plonger = m_chain.Tip();
     while (pfork && pfork != plonger)
     {
         while (plonger && plonger->nHeight > pfork->nHeight)
@@ -1411,7 +1414,7 @@ static void CheckForkWarningConditionsOnNewFork(CBlockIndex* pindexNewForkTip) E
     // the 7-block condition and from this always have the most-likely-to-cause-warning fork
     if (pfork && (!pindexBestForkTip || pindexNewForkTip->nHeight > pindexBestForkTip->nHeight) &&
             pindexNewForkTip->nChainWork - pfork->nChainWork > (GetBlockProof(*pfork) * 7) &&
-            ::ChainActive().Height() - pindexNewForkTip->nHeight < 72)
+            m_chain.Tip()->nHeight - pindexNewForkTip->nHeight < 72)
     {
         pindexBestForkTip = pindexNewForkTip;
         pindexBestForkBase = pfork;
@@ -1421,21 +1424,22 @@ static void CheckForkWarningConditionsOnNewFork(CBlockIndex* pindexNewForkTip) E
 }
 
 // Called both upon regular invalid block discovery *and* InvalidateBlock
-void static InvalidChainFound(CBlockIndex* pindexNew) EXCLUSIVE_LOCKS_REQUIRED(cs_main)
+void CChainState::InvalidChainFound(CBlockIndex* pindexNew)
 {
+    assert(std::addressof(::ChainstateActive()) == std::addressof(*this));
     if (!pindexBestInvalid || pindexNew->nChainWork > pindexBestInvalid->nChainWork)
         pindexBestInvalid = pindexNew;
     if (pindexBestHeader != nullptr && pindexBestHeader->GetAncestor(pindexNew->nHeight) == pindexNew) {
-        pindexBestHeader = ::ChainActive().Tip();
+        pindexBestHeader = m_chain.Tip();
     }
 
     LogPrintf("%s: invalid block=%s  height=%d  log2_work=%f  date=%s\n", __func__,
       pindexNew->GetBlockHash().ToString(), pindexNew->nHeight,
       log(pindexNew->nChainWork.getdouble())/log(2.0), FormatISO8601DateTime(pindexNew->GetBlockTime()));
-    CBlockIndex *tip = ::ChainActive().Tip();
+    CBlockIndex *tip = m_chain.Tip();
     assert (tip);
     LogPrintf("%s:  current best=%s  height=%d  log2_work=%f  date=%s\n", __func__,
-      tip->GetBlockHash().ToString(), ::ChainActive().Height(), log(tip->nChainWork.getdouble())/log(2.0),
+      tip->GetBlockHash().ToString(), m_chain.Height(), log(tip->nChainWork.getdouble())/log(2.0),
       FormatISO8601DateTime(tip->GetBlockTime()));
     CheckForkWarningConditions();
 }
