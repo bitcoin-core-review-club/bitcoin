@@ -146,6 +146,7 @@ private:
     int64_t nLockTimeCutoff;
     const CChainParams& chainparams;
     const CTxMemPool& m_mempool;
+    CChainState& m_active_chainstate;
 
 public:
     struct Options {
@@ -154,8 +155,8 @@ public:
         CFeeRate blockMinFeeRate;
     };
 
-    explicit BlockAssembler(const CTxMemPool& mempool, const CChainParams& params);
-    explicit BlockAssembler(const CTxMemPool& mempool, const CChainParams& params, const Options& options);
+    explicit BlockAssembler(CChainState& active_chainstate, const CTxMemPool& mempool, const CChainParams& params);
+    explicit BlockAssembler(CChainState& active_chainstate, const CTxMemPool& mempool, const CChainParams& params, const Options& options);
 
     /** Construct a new block template with coinbase to scriptPubKeyIn */
     std::unique_ptr<CBlockTemplate> CreateNewBlock(const CScript& scriptPubKeyIn);
