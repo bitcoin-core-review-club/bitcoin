@@ -374,7 +374,10 @@ static RPCHelpMan generateblock()
 
     // Add transactions
     block.vtx.insert(block.vtx.end(), txs.begin(), txs.end());
-    RegenerateCommitments(block);
+    {
+        LOCK(::cs_main);
+        RegenerateCommitments(block, g_chainman.m_blockman);
+    }
 
     {
         LOCK(cs_main);
