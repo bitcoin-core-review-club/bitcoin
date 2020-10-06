@@ -80,7 +80,6 @@ ChainstateManager& EnsureChainman(const util::Ref& context)
     }
     {
         LOCK(::cs_main);
-        assert(std::addressof(g_chainman) == std::addressof(*node.chainman));
     }
     return *node.chainman;
 }

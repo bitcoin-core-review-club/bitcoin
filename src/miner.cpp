@@ -47,7 +47,6 @@ void RegenerateCommitments(CBlock& block, BlockManager& blockman)
 
     {
         LOCK(::cs_main);
-        assert(std::addressof(g_chainman.m_blockman) == std::addressof(blockman));
     }
     GenerateCoinbaseCommitment(block, WITH_LOCK(cs_main, return blockman.LookupBlockIndex(block.hashPrevBlock)), Params().GetConsensus());
 
@@ -64,7 +63,6 @@ BlockAssembler::BlockAssembler(CChainState& active_chainstate, const CTxMemPool&
       m_mempool(mempool),
       m_active_chainstate(active_chainstate)
 {
-    assert(std::addressof(::ChainstateActive()) == std::addressof(m_active_chainstate));
     blockMinFeeRate = options.blockMinFeeRate;
     // Limit weight to between 4K and MAX_BLOCK_WEIGHT-4K for sanity:
     nBlockMaxWeight = std::max<size_t>(4000, std::min<size_t>(MAX_BLOCK_WEIGHT - 4000, options.nBlockMaxWeight));

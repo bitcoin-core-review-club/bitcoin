@@ -148,7 +148,6 @@ public:
     Optional<int> getHeight() override
     {
         LOCK(::cs_main);
-        assert(std::addressof(::ChainActive()) == std::addressof(m_node.chainman->ActiveChain()));
         int height = m_node.chainman->ActiveChain().Height();
         if (height >= 0) {
             return height;
@@ -158,9 +157,7 @@ public:
     Optional<int> getBlockHeight(const uint256& hash) override
     {
         LOCK(::cs_main);
-        assert(std::addressof(g_chainman) == std::addressof(*m_node.chainman));
         CBlockIndex* block = m_node.chainman->m_blockman.LookupBlockIndex(hash);
-        assert(std::addressof(::ChainActive()) == std::addressof(m_node.chainman->ActiveChain()));
         if (block && m_node.chainman->ActiveChain().Contains(block)) {
             return block->nHeight;
         }
@@ -169,7 +166,6 @@ public:
     uint256 getBlockHash(int height) override
     {
         LOCK(::cs_main);
-        assert(std::addressof(::ChainActive()) == std::addressof(m_node.chainman->ActiveChain()));
         CBlockIndex* block = m_node.chainman->ActiveChain()[height];
         assert(block);
         return block->GetBlockHash();
@@ -177,14 +173,12 @@ public:
     bool haveBlockOnDisk(int height) override
     {
         LOCK(cs_main);
-        assert(std::addressof(::ChainActive()) == std::addressof(m_node.chainman->ActiveChain()));
         CBlockIndex* block = m_node.chainman->ActiveChain()[height];
         return block && ((block->nStatus & BLOCK_HAVE_DATA) != 0) && block->nTx > 0;
     }
     Optional<int> findFirstBlockWithTimeAndHeight(int64_t time, int height, uint256* hash) override
     {
         LOCK(cs_main);
-        assert(std::addressof(::ChainActive()) == std::addressof(m_node.chainman->ActiveChain()));
         CBlockIndex* block = m_node.chainman->ActiveChain().FindEarliestAtLeast(time, height);
         if (block) {
             if (hash) *hash = block->GetBlockHash();
@@ -195,20 +189,16 @@ public:
     CBlockLocator getTipLocator() override
     {
         LOCK(cs_main);
-        assert(std::addressof(::ChainActive()) == std::addressof(m_node.chainman->ActiveChain()));
         return m_node.chainman->ActiveChain().GetLocator();
     }
     bool checkFinalTx(const CTransaction& tx) override
     {
         LOCK(cs_main);
-        assert(std::addressof(::ChainActive()) == std::addressof(m_node.chainman->ActiveChain()));
         return CheckFinalTx(m_node.chainman->ActiveChain().Tip(), tx);
     }
     Optional<int> findLocatorFork(const CBlockLocator& locator) override
     {
         LOCK(cs_main);
-        assert(std::addressof(g_chainman) == std::addressof(*m_node.chainman));
-        assert(std::addressof(::ChainActive()) == std::addressof(m_node.chainman->ActiveChain()));
         if (CBlockIndex* fork = m_node.chainman->m_blockman.FindForkInGlobalIndex(m_node.chainman->ActiveChain(), locator)) {
             return fork->nHeight;
         }
@@ -217,28 +207,23 @@ public:
     bool findBlock(const uint256& hash, const FoundBlock& block) override
     {
         WAIT_LOCK(cs_main, lock);
-        assert(std::addressof(g_chainman) == std::addressof(*m_node.chainman));
         return FillBlock(m_node.chainman->m_blockman.LookupBlockIndex(hash), block, lock);
     }
     bool findFirstBlockWithTimeAndHeight(int64_t min_time, int min_height, const FoundBlock& block) override
     {
         WAIT_LOCK(cs_main, lock);
-        assert(std::addressof(::ChainActive()) == std::addressof(m_node.chainman->ActiveChain()));
         return FillBlock(m_node.chainman->ActiveChain().FindEarliestAtLeast(min_time, min_height), block, lock);
     }
     bool findNextBlock(const uint256& block_hash, int block_height, const FoundBlock& next, bool* reorg) override {
         WAIT_LOCK(cs_main, lock);
-        assert(std::addressof(::ChainActive()) == std::addressof(m_node.chainman->ActiveChain()));
         CBlockIndex* block = m_node.chainman->ActiveChain()[block_height];
         if (block && block->GetBlockHash() != block_hash) block = nullptr;
         if (reorg) *reorg = !block;
-        assert(std::addressof(::ChainActive()) == std::addressof(m_node.chainman->ActiveChain()));
         return FillBlock(block ? m_node.chainman->ActiveChain()[block_height + 1] : nullptr, next, lock);
     }
     bool findAncestorByHeight(const uint256& block_hash, int ancestor_height, const FoundBlock& ancestor_out) override
     {
         WAIT_LOCK(cs_main, lock);
-        assert(std::addressof(g_chainman) == std::addressof(*m_node.chainman));
         if (const CBlockIndex* block = m_node.chainman->m_blockman.LookupBlockIndex(block_hash)) {
             if (const CBlockIndex* ancestor = block->GetAncestor(ancestor_height)) {
                 return FillBlock(ancestor, ancestor_out, lock);
@@ -249,9 +234,7 @@ public:
     bool findAncestorByHash(const uint256& block_hash, const uint256& ancestor_hash, const FoundBlock& ancestor_out) override
     {
         WAIT_LOCK(cs_main, lock);
-        assert(std::addressof(g_chainman) == std::addressof(*m_node.chainman));
         const CBlockIndex* block = m_node.chainman->m_blockman.LookupBlockIndex(block_hash);
-        assert(std::addressof(g_chainman) == std::addressof(*m_node.chainman));
         const CBlockIndex* ancestor = m_node.chainman->m_blockman.LookupBlockIndex(ancestor_hash);
         if (block && ancestor && block->GetAncestor(ancestor->nHeight) != ancestor) ancestor = nullptr;
         return FillBlock(ancestor, ancestor_out, lock);
@@ -259,9 +242,7 @@ public:
     bool findCommonAncestor(const uint256& block_hash1, const uint256& block_hash2, const FoundBlock& ancestor_out, const FoundBlock& block1_out, const FoundBlock& block2_out) override
     {
         WAIT_LOCK(cs_main, lock);
-        assert(std::addressof(g_chainman) == std::addressof(*m_node.chainman));
         const CBlockIndex* block1 = m_node.chainman->m_blockman.LookupBlockIndex(block_hash1);
-        assert(std::addressof(g_chainman) == std::addressof(*m_node.chainman));
         const CBlockIndex* block2 = m_node.chainman->m_blockman.LookupBlockIndex(block_hash2);
         const CBlockIndex* ancestor = block1 && block2 ? LastCommonAncestor(block1, block2) : nullptr;
         // Using & instead of && below to avoid short circuiting and leaving
@@ -272,7 +253,6 @@ public:
     double guessVerificationProgress(const uint256& block_hash) override
     {
         LOCK(cs_main);
-        assert(std::addressof(g_chainman) == std::addressof(*m_node.chainman));
         return GuessVerificationProgress(Params().TxData(), m_node.chainman->m_blockman.LookupBlockIndex(block_hash));
     }
     bool hasBlocks(const uint256& block_hash, int min_height, Optional<int> max_height) override
@@ -285,7 +265,6 @@ public:
         // used to limit the range, and passing min_height that's too low or
         // max_height that's too high will not crash or change the result.
         LOCK(::cs_main);
-        assert(std::addressof(g_chainman) == std::addressof(*m_node.chainman));
         if (CBlockIndex* block = m_node.chainman->m_blockman.LookupBlockIndex(block_hash)) {
             if (max_height && block->nHeight >= *max_height) block = block->GetAncestor(*max_height);
             for (; block->nStatus & BLOCK_HAVE_DATA; block = block->pprev) {
@@ -369,7 +348,6 @@ public:
     }
     bool isReadyToBroadcast() override { return !::fImporting && !::fReindex && !isInitialBlockDownload(); }
     bool isInitialBlockDownload() override {
-        assert(std::addressof(::ChainstateActive()) == std::addressof(m_node.chainman->ActiveChainstate()));
         return m_node.chainman->ActiveChainstate().IsInitialBlockDownload();
     }
     bool shutdownRequested() override { return ShutdownRequested(); }
@@ -389,7 +367,6 @@ public:
     {
         if (!old_tip.IsNull()) {
             LOCK(::cs_main);
-            assert(std::addressof(::ChainActive()) == std::addressof(m_node.chainman->ActiveChain()));
             if (old_tip == m_node.chainman->ActiveChain().Tip()->GetBlockHash()) return;
         }
         SyncWithValidationInterfaceQueue();
