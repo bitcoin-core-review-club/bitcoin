@@ -966,8 +966,8 @@ public:
     std::vector<CAddress> vAddrToSend;
     std::unique_ptr<CRollingBloomFilter> m_addr_known{nullptr};
     bool fGetAddr{false};
-    std::chrono::microseconds m_next_addr_send GUARDED_BY(cs_sendProcessing){0};
-    std::chrono::microseconds m_next_local_addr_send GUARDED_BY(cs_sendProcessing){0};
+    std::chrono::microseconds m_next_addr_send{0};
+    std::chrono::microseconds m_next_local_addr_send{0};
 
     // List of block ids we still have announce.
     // There is no final sorting before sending, as they are always sent immediately
