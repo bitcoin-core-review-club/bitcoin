@@ -1401,8 +1401,8 @@ bool AppInitMain(const util::Ref& context, NodeContext& node, interfaces::BlockA
     }
 
     assert(!node.chainman);
-    node.chainman = &g_chainman;
-    ChainstateManager& chainman = *Assert(node.chainman);
+    node.chainman = MakeUnique<ChainstateManager>();
+    ChainstateManager& chainman = *node.chainman;
 
     node.peerman.reset(new PeerManager(chainparams, *node.connman, node.banman.get(), *node.scheduler, chainman, *node.mempool));
     RegisterValidationInterface(node.peerman.get());

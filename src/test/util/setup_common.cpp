@@ -142,7 +142,7 @@ ChainTestingSetup::ChainTestingSetup(const std::string& chainName, const std::ve
 
     m_node.mempool = MakeUnique<CTxMemPool>(&::feeEstimator);
 
-    m_node.chainman = &::g_chainman;
+    m_node.chainman = MakeUnique<ChainstateManager>();
 
     // Start script-checking threads. Set g_parallel_script_checks to true so they are used.
     constexpr int script_check_threads = 2;
