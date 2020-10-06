@@ -640,8 +640,14 @@ enum
     LOCAL_MAX
 };
 
-bool IsPeerAddrLocalGood(CNode *pnode);
-void AdvertiseLocal(CNode *pnode);
+bool IsPeerAddrLocalGood(CNode& pnode);
+
+/**
+ * Add our "best" local address (see GetLocal) to the batch of addresses
+ * we are planning to relay to a given node as scheduled.
+ * The relay is not guaranteed.
+ */
+void AdvertiseLocal(CNode& pnode);
 
 /**
  * Mark a network as reachable or unreachable (no automatic connects to it)
@@ -658,8 +664,8 @@ bool AddLocal(const CNetAddr& addr, int nScore = LOCAL_NONE);
 void RemoveLocal(const CService& addr);
 bool SeenLocal(const CService& addr);
 bool IsLocal(const CService& addr);
-bool GetLocal(CService &addr, const CNetAddr *paddrPeer = nullptr);
-CAddress GetLocalAddress(const CNetAddr *paddrPeer, ServiceFlags nLocalServices);
+bool GetLocal(const CService &addr, const CNetAddr *paddrPeer = nullptr);
+CAddress GetLocalAddress(const CNetAddr& paddrPeer, ServiceFlags nLocalServices);
 
 
 extern bool fDiscover;
