@@ -2489,19 +2489,8 @@ void PeerManager::ProcessMessage(CNode& pfrom, const std::string& msg_type, CDat
             // We skip these operations for BLOCK_RELAY peers to avoid
             // potentially leaking information about our BLOCK_RELAY
             // connections via the addrman or address relay.
-            if (fListen && !::ChainstateActive().IsInitialBlockDownload())
-            {
-                CAddress addr = GetLocalAddress(pfrom.addr, pfrom.GetLocalServices());
-                FastRandomContext insecure_rand;
-                if (addr.IsRoutable())
-                {
-                    LogPrint(BCLog::NET, "ProcessMessages: advertising address %s\n", addr.ToString());
-                    pfrom.PushAddress(addr, insecure_rand);
-                } else if (IsPeerAddrLocalGood(pfrom)) {
-                    addr.SetIP(addrMe);
-                    LogPrint(BCLog::NET, "ProcessMessages: advertising address %s\n", addr.ToString());
-                    pfrom.PushAddress(addr, insecure_rand);
-                }
+            if (fListen && !::ChainstateActive().IsInitialBlockDownload()) {
+                AdvertiseLocal(pfrom);
             }
 
             // Get recent addresses
