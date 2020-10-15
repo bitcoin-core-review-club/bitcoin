@@ -485,6 +485,9 @@ public:
     // Single transaction acceptance
     MempoolAcceptResult AcceptSingleTransaction(const CTransactionRef& ptx, ATMPArgs& args) EXCLUSIVE_LOCKS_REQUIRED(cs_main);
 
+    // Multiple transaction acceptance
+    std::vector<MempoolAcceptResult> AcceptMultipleTransactions(std::vector<CTransactionRef>& txns, ATMPArgs& args) EXCLUSIVE_LOCKS_REQUIRED(cs_main);
+
 private:
     // All the intermediate state that gets passed between the various levels
     // of checking a given transaction.
@@ -649,6 +652,13 @@ bool MemPoolAccept::PreChecks(ATMPArgs& args, Workspace& ws)
 
     LockPoints lp;
     m_view.SetBackend(m_viewmempool);
+
+    // Check for conflicts with package transactions
+    for (const CTxIn &txin : tx.vin) {
+        if (m_viewmempool.PackageSpends(txin.prevout)) {
+            return state.Invalid(TxValidationResult::TX_CONFLICT, "conflict-in-package");
+        }
+    }
 
     const CCoinsViewCache& coins_cache = ::ChainstateActive().CoinsTip();
     // do all inputs exist?
@@ -1055,6 +1065,40 @@ MempoolAcceptResult MemPoolAccept::AcceptSingleTransaction(const CTransactionRef
     return MempoolAcceptResult(std::move(workspace.m_replaced_transactions), workspace.m_base_fees);
 }
 
+std::vector<MempoolAcceptResult> MemPoolAccept::AcceptMultipleTransactions(std::vector<CTransactionRef>& txns, ATMPArgs& args)
+{
+    AssertLockHeld(cs_main);
+    std::vector<Workspace> workspaces{};
+    workspaces.reserve(txns.size());
+    std::transform(txns.begin(), txns.end(), std::back_inserter(workspaces), [](CTransactionRef& tx) {
+        return Workspace(tx);
+    });
+
+    LOCK(m_pool.cs);
+    // Do all PreChecks first and fail fast to avoid running expensive script
+    // checks when unnecessary.
+    for (unsigned int i = 0; i < txns.size(); ++i) {
+        if (!PreChecks(args, workspaces[i])) {
+            return std::vector<MempoolAcceptResult> { MempoolAcceptResult(workspaces[i].m_state) };
+        }
+        m_viewmempool.AddPackageTransaction(txns[i]);
+    }
+
+    // TODO: Enforce package-level feerate and other policies before script checks.
+    for (unsigned int i = 0; i < txns.size(); ++i) {
+        PrecomputedTransactionData txdata;
+
+        if (!PolicyScriptChecks(args, workspaces[i], txdata)) {
+            return std::vector<MempoolAcceptResult> { MempoolAcceptResult(workspaces[i].m_state) };
+        }
+    }
+    std::vector<MempoolAcceptResult> results;
+    std::transform(workspaces.begin(), workspaces.end(), std::back_inserter(results), [](Workspace& ws) {
+        return MempoolAcceptResult(std::move(ws.m_replaced_transactions), ws.m_base_fees);
+    });
+    return results;
+}
+
 } // anon namespace
 
 /** (try to) add transaction to memory pool with a specified acceptance time **/
@@ -1084,6 +1128,27 @@ MempoolAcceptResult AcceptToMemoryPool(CTxMemPool& pool, const CTransactionRef &
 {
     const CChainParams& chainparams = Params();
     return AcceptToMemoryPoolWithTime(chainparams, pool, tx, GetTime(), bypass_limits, test_accept);
+}
+
+std::vector<MempoolAcceptResult> ProcessNewPackage(CTxMemPool& pool, std::vector<CTransactionRef>& txns, bool test_accept)
+{
+    AssertLockHeld(cs_main);
+    assert(test_accept); // Only allow package accept dry-runs (testmempoolaccept RPC).
+
+    const CChainParams& chainparams = Params();
+    std::vector<COutPoint> coins_to_uncache;
+    MemPoolAccept::ATMPArgs args { chainparams, GetTime(), false, coins_to_uncache, test_accept };
+
+    const std::vector<MempoolAcceptResult> results = MemPoolAccept(pool).AcceptMultipleTransactions(txns, args);
+
+    // Remove the coins that were not present in the coins cache before
+    // AcceptMultipleTransactions to prevent memory DoS in case we receive a large
+    // number of invalid transactions that attempt to overrun the coins cache.
+    for (const COutPoint& hashTx : coins_to_uncache) {
+        ::ChainstateActive().CoinsTip().Uncache(hashTx);
+    }
+
+    return results;
 }
 
 CTransactionRef GetTransaction(const CBlockIndex* const block_index, const CTxMemPool* const mempool, const uint256& hash, const Consensus::Params& consensusParams, uint256& hashBlock)
