@@ -78,6 +78,7 @@ ChainstateManager& EnsureChainman(const util::Ref& context)
     if (!node.chainman) {
         throw JSONRPCError(RPC_INTERNAL_ERROR, "Node chainman not found");
     }
+    assert(std::addressof(g_chainman) == std::addressof(*node.chainman));
     return *node.chainman;
 }
 
