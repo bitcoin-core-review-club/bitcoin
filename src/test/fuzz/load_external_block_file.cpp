@@ -13,9 +13,14 @@
 #include <cstdint>
 #include <vector>
 
+namespace {
+const TestingSetup* g_setup;
+} // namespace
+
 void initialize()
 {
-    InitializeFuzzingContext();
+    static TestingSetup setup{CBaseChainParams::REGTEST, {"-nodebuglogfile"}};
+    g_setup = &setup;
 }
 
 void test_one_input(const std::vector<uint8_t>& buffer)
@@ -27,5 +32,5 @@ void test_one_input(const std::vector<uint8_t>& buffer)
         return;
     }
     FlatFilePos flat_file_pos;
-    ::ChainstateActive().LoadExternalBlockFile(Params(), fuzzed_block_file, fuzzed_data_provider.ConsumeBool() ? &flat_file_pos : nullptr);
+    g_setup->m_node.chainman->ActiveChainstate().LoadExternalBlockFile(Params(), fuzzed_block_file, fuzzed_data_provider.ConsumeBool() ? &flat_file_pos : nullptr);
 }
