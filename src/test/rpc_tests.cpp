@@ -226,9 +226,11 @@ BOOST_AUTO_TEST_CASE(rpc_parse_monetary_values)
     // Test FeeRateFromValueInSatB
     BOOST_CHECK(FeeRateFromValueInSatB(ValueFromString("0")) == CFeeRate{0});
     BOOST_CHECK(FeeRateFromValueInSatB(ValueFromString("0.00000000")) == CFeeRate{0});
+    BOOST_CHECK(FeeRateFromValueInSatB(ValueFromString("0.00000000")).IsZero());
     BOOST_CHECK(FeeRateFromValueInSatB(ValueFromString("0.001")) == CFeeRate{1});
     BOOST_CHECK(FeeRateFromValueInSatB(ValueFromString("0.00100000")) == CFeeRate{1});
     BOOST_CHECK(FeeRateFromValueInSatB(ValueFromString("1")) == CFeeRate{1000});
+    BOOST_CHECK(!FeeRateFromValueInSatB(ValueFromString("1")).IsZero());
     BOOST_CHECK(FeeRateFromValueInSatB(ValueFromString("1.000")) == CFeeRate{1000});
     BOOST_CHECK(FeeRateFromValueInSatB(ValueFromString("1.2340000")) == CFeeRate{1234});
 
