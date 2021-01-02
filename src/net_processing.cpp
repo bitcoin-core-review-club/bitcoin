@@ -330,8 +330,7 @@ struct CNodeState {
     //! Whether this peer wants witnesses in cmpctblocks/blocktxns
     bool fWantsCmpctWitness;
     /**
-     * If we've announced NODE_WITNESS to this peer: whether the peer sends witnesses in cmpctblocks/blocktxns,
-     * otherwise: whether this peer sends non-witnesses in cmpctblocks/blocktxns.
+     * Whether the peer sends witnesses in cmpctblocks/blocktxns.
      */
     bool fSupportsDesiredCmpctVersion;
 
@@ -550,7 +549,7 @@ static void MaybeSetPeerAsAnnouncingHeaderAndIDs(NodeId nodeid, CConnman& connma
         }
         connman.ForNode(nodeid, [&connman](CNode* pfrom) EXCLUSIVE_LOCKS_REQUIRED(::cs_main) {
             AssertLockHeld(::cs_main);
-            uint64_t nCMPCTBLOCKVersion = (pfrom->GetLocalServices() & NODE_WITNESS) ? 2 : 1;
+            uint64_t nCMPCTBLOCKVersion = CMPCTBLOCKS_VERSION;
             if (lNodesAnnouncingHeaderAndIDs.size() >= 3) {
                 // As per BIP152, we only get 3 of our peers to announce
                 // blocks using compact encodings.
@@ -2522,6 +2521,8 @@ void PeerManager::ProcessMessage(CNode& pfrom, const std::string& msg_type, CDat
         uint64_t nCMPCTBLOCKVersion = 0;
         vRecv >> fAnnounceUsingCMPCTBLOCK >> nCMPCTBLOCKVersion;
 
+        // Only support compact block relay with witness peers
+        if (WITH_LOCK(cs_main, {return !State(pfrom.GetId())->fHaveWitness;})) return;
         // Only support compact block relay with witnesses
         if (nCMPCTBLOCKVersion != CMPCTBLOCKS_VERSION) return;
 
@@ -2538,10 +2539,7 @@ void PeerManager::ProcessMessage(CNode& pfrom, const std::string& msg_type, CDat
             pfrom.m_bip152_highbandwidth_from = fAnnounceUsingCMPCTBLOCK;
         }
         if (!State(pfrom.GetId())->fSupportsDesiredCmpctVersion) {
-            if (pfrom.GetLocalServices() & NODE_WITNESS)
-                State(pfrom.GetId())->fSupportsDesiredCmpctVersion = true;
-            else
-                State(pfrom.GetId())->fSupportsDesiredCmpctVersion = false;
+            State(pfrom.GetId())->fSupportsDesiredCmpctVersion = true;
         }
         return;
     }
