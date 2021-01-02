@@ -321,18 +321,12 @@ struct CNodeState {
     bool fPreferHeaderAndIDs;
     /**
       * Whether this peer will send us cmpctblocks if we request them.
-      * This is not used to gate request logic, as we really only care about fSupportsDesiredCmpctVersion,
-      * but is used as a flag to "lock in" the version of compact blocks (fWantsCmpctWitness) we send.
       */
     bool fProvidesHeaderAndIDs;
     //! Whether this peer can give us witnesses
     bool fHaveWitness;
     //! Whether this peer wants witnesses in cmpctblocks/blocktxns
     bool fWantsCmpctWitness;
-    /**
-     * Whether the peer sends witnesses in cmpctblocks/blocktxns.
-     */
-    bool fSupportsDesiredCmpctVersion;
 
     /** State used to enforce CHAIN_SYNC_TIMEOUT and EXTRA_PEER_CHECK_INTERVAL logic.
       *
@@ -403,7 +397,6 @@ struct CNodeState {
         fProvidesHeaderAndIDs = false;
         fHaveWitness = false;
         fWantsCmpctWitness = false;
-        fSupportsDesiredCmpctVersion = false;
         m_chain_sync = { 0, nullptr, false, false };
         m_last_block_announcement = 0;
         m_recently_announced_invs.reset();
@@ -535,7 +528,7 @@ static void MaybeSetPeerAsAnnouncingHeaderAndIDs(NodeId nodeid, CConnman& connma
 {
     AssertLockHeld(cs_main);
     CNodeState* nodestate = State(nodeid);
-    if (!nodestate || !nodestate->fSupportsDesiredCmpctVersion) {
+    if (!nodestate || !nodestate->fProvidesHeadersAndIDs) {
         // Never ask from peers who can't provide witnesses.
         return;
     }
@@ -1917,7 +1910,7 @@ void PeerManager::ProcessHeadersMessage(CNode& pfrom, const Peer& peer,
                             pindexLast->GetBlockHash().ToString(), pindexLast->nHeight);
                 }
                 if (vGetData.size() > 0) {
-                    if (nodestate->fSupportsDesiredCmpctVersion && vGetData.size() == 1 && mapBlocksInFlight.size() == 1 && pindexLast->pprev->IsValid(BLOCK_VALID_CHAIN)) {
+                    if (nodestate->fProvidesHeadersAndIDs && vGetData.size() == 1 && mapBlocksInFlight.size() == 1 && pindexLast->pprev->IsValid(BLOCK_VALID_CHAIN)) {
                         // In any case, we want to download using a compact block, not a regular one
                         vGetData[0] = CInv(MSG_CMPCT_BLOCK, vGetData[0].hash);
                     }
@@ -2537,9 +2530,6 @@ void PeerManager::ProcessMessage(CNode& pfrom, const std::string& msg_type, CDat
             // save whether peer selects us as BIP152 high-bandwidth peer
             // (receiving sendcmpct(1) signals high-bandwidth, sendcmpct(0) low-bandwidth)
             pfrom.m_bip152_highbandwidth_from = fAnnounceUsingCMPCTBLOCK;
-        }
-        if (!State(pfrom.GetId())->fSupportsDesiredCmpctVersion) {
-            State(pfrom.GetId())->fSupportsDesiredCmpctVersion = true;
         }
         return;
     }
@@ -3229,7 +3219,7 @@ void PeerManager::ProcessMessage(CNode& pfrom, const std::string& msg_type, CDat
         if (!fAlreadyInFlight && !CanDirectFetch(m_chainparams.GetConsensus()))
             return;
 
-        if (IsWitnessEnabled(pindex->pprev, m_chainparams.GetConsensus()) && !nodestate->fSupportsDesiredCmpctVersion) {
+        if (IsWitnessEnabled(pindex->pprev, m_chainparams.GetConsensus()) && !nodestate->fProvidesHeadersAndIDs) {
             // Don't bother trying to process compact blocks from v1 peers
             // after segwit activates.
             return;
