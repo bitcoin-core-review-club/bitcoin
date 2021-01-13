@@ -459,6 +459,7 @@ void SetupServerArgs(NodeContext& node)
     argsman.AddArg("-networkactive", "Enable all P2P network activity (default: 1). Can be changed by the setnetworkactive RPC command", ArgsManager::ALLOW_BOOL, OptionsCategory::CONNECTION);
     argsman.AddArg("-timeout=<n>", strprintf("Specify connection timeout in milliseconds (minimum: 1, default: %d)", DEFAULT_CONNECT_TIMEOUT), ArgsManager::ALLOW_ANY, OptionsCategory::CONNECTION);
     argsman.AddArg("-peertimeout=<n>", strprintf("Specify p2p connection timeout in seconds. This option determines the amount of time a peer may be inactive before the connection to it is dropped. (minimum: 1, default: %d)", DEFAULT_PEER_CONNECT_TIMEOUT), ArgsManager::ALLOW_ANY | ArgsManager::DEBUG_ONLY, OptionsCategory::CONNECTION);
+    argsman.AddArg("-pingtimeout=<n>", strprintf("Specify ping timeout in seconds. This option determines the amount of time a peer is permitted to respond to a ping message before the connection to it is dropped. (minimum: 1, default: %d)", TIMEOUT_INTERVAL), ArgsManager::ALLOW_ANY | ArgsManager::DEBUG_ONLY, OptionsCategory::CONNECTION);
     argsman.AddArg("-torcontrol=<ip>:<port>", strprintf("Tor control port to use if onion listening enabled (default: %s)", DEFAULT_TOR_CONTROL), ArgsManager::ALLOW_ANY, OptionsCategory::CONNECTION);
     argsman.AddArg("-torpassword=<pass>", "Tor control port password (default: empty)", ArgsManager::ALLOW_ANY | ArgsManager::SENSITIVE, OptionsCategory::CONNECTION);
 #ifdef USE_UPNP
@@ -1142,6 +1143,10 @@ bool AppInitParameterInteraction(const ArgsManager& args)
     peer_connect_timeout = args.GetArg("-peertimeout", DEFAULT_PEER_CONNECT_TIMEOUT);
     if (peer_connect_timeout <= 0) {
         return InitError(Untranslated("peertimeout cannot be configured with a negative value."));
+    }
+
+    if (args.GetArg("-pingtimeout", TIMEOUT_INTERVAL) <= 0) {
+        return InitError(Untranslated("pingtimeout cannot be configured with a negative value."));
     }
 
     if (args.IsArgSet("-minrelaytxfee")) {
