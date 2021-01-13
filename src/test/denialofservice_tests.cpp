@@ -83,6 +83,9 @@ BOOST_AUTO_TEST_CASE(outbound_slow_chain_eviction)
     auto peerLogic = PeerManager::make(chainparams, *connman, nullptr, *m_node.scheduler,
                                        *m_node.chainman, *m_node.mempool, false);
 
+    // Don't let pings time out
+    gArgs.ForceSetArg("-pingtimeout", "9999");
+
     // Mock an outbound peer
     CAddress addr1(ip(0xa0b0c001), NODE_NONE);
     CNode dummyNode1(id++, ServiceFlags(NODE_NETWORK | NODE_WITNESS), INVALID_SOCKET, addr1, 0, 0, CAddress(), "", ConnectionType::OUTBOUND_FULL_RELAY);

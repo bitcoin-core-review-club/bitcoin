@@ -33,6 +33,7 @@ class BIP68Test(BitcoinTestFramework):
             [
                 "-acceptnonstdtxn=1",
                 "-peertimeout=9999",  # bump because mocktime might cause a disconnect otherwise
+                "-pingtimeout=9999",  # bump because mocktime might cause a disconnect otherwise
             ],
             ["-acceptnonstdtxn=0"],
         ]
