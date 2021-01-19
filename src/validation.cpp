@@ -1041,7 +1041,7 @@ MempoolAcceptResult MemPoolAccept::AcceptSingleTransaction(const CTransactionRef
 
     Workspace workspace(ptx);
 
-    if (!PreChecks(args, workspace)) return MempoolAcceptResult(workspace.m_state);
+    if (!PreChecks(args, workspace)) return MempoolAcceptResult(ptx, workspace.m_state);
 
     // Only compute the precomputed transaction data if we need to verify
     // scripts (ie, other policy checks pass). We perform the inexpensive
@@ -1049,16 +1049,16 @@ MempoolAcceptResult MemPoolAccept::AcceptSingleTransaction(const CTransactionRef
     // checks pass, to mitigate CPU exhaustion denial-of-service attacks.
     PrecomputedTransactionData txdata;
 
-    if (!PolicyScriptChecks(args, workspace, txdata)) return MempoolAcceptResult(workspace.m_state);
+    if (!PolicyScriptChecks(args, workspace, txdata)) return MempoolAcceptResult(ptx, workspace.m_state);
 
-    if (!ConsensusScriptChecks(args, workspace, txdata)) return MempoolAcceptResult(workspace.m_state);
+    if (!ConsensusScriptChecks(args, workspace, txdata)) return MempoolAcceptResult(ptx, workspace.m_state);
 
     // Tx was accepted, but not added
     if (args.m_test_accept) {
         return MempoolAcceptResult(std::move(workspace.m_replaced_transactions), workspace.m_base_fees);
     }
 
-    if (!Finalize(args, workspace)) return MempoolAcceptResult(workspace.m_state);
+    if (!Finalize(args, workspace)) return MempoolAcceptResult(ptx, workspace.m_state);
 
     GetMainSignals().TransactionAddedToMempool(ptx, m_pool.GetAndIncrementSequence());
 
@@ -1079,7 +1079,7 @@ std::vector<MempoolAcceptResult> MemPoolAccept::AcceptMultipleTransactions(std::
     // checks when unnecessary.
     for (unsigned int i = 0; i < txns.size(); ++i) {
         if (!PreChecks(args, workspaces[i])) {
-            return std::vector<MempoolAcceptResult> { MempoolAcceptResult(workspaces[i].m_state) };
+            return std::vector<MempoolAcceptResult> { MempoolAcceptResult(txns[i], workspaces[i].m_state) };
         }
         m_viewmempool.AddPackageTransaction(txns[i]);
     }
@@ -1089,7 +1089,7 @@ std::vector<MempoolAcceptResult> MemPoolAccept::AcceptMultipleTransactions(std::
         PrecomputedTransactionData txdata;
 
         if (!PolicyScriptChecks(args, workspaces[i], txdata)) {
-            return std::vector<MempoolAcceptResult> { MempoolAcceptResult(workspaces[i].m_state) };
+            return std::vector<MempoolAcceptResult> { MempoolAcceptResult(txns[i], workspaces[i].m_state) };
         }
     }
     std::vector<MempoolAcceptResult> results;

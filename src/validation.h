@@ -194,6 +194,7 @@ void PruneBlockFilesManual(int nManualPruneHeight);
 */
 struct MempoolAcceptResult {
     bool m_accepted;
+    CTransactionRef ptx;
 
     // Valid when m_accepted = false
     TxValidationState m_state;
@@ -202,8 +203,7 @@ struct MempoolAcceptResult {
     std::list<CTransactionRef> m_replaced_transactions;
     CAmount m_base_fees;
 
-    /** Constructor for failure case */
-    explicit MempoolAcceptResult(TxValidationState state) : m_state(state) {
+    explicit MempoolAcceptResult(const CTransactionRef& tx, const TxValidationState& state) : ptx(tx), m_state(state) {
         m_accepted = false;
     }
 
