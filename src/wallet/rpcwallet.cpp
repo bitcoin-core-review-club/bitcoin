@@ -671,11 +671,22 @@ static CAmount GetReceived(const CWallet& wallet, const UniValue& params, bool b
     if (!params[1].isNull())
         min_depth = params[1].get_int();
 
+    bool include_immature{!params[2].isNull() && params[2].get_bool()};
+
+    // Filtering out coinbase outputs is deprecated
+    // It can be enabled by setting deprecatedrpc=filter_coinbase
+    bool filter_coinbase{wallet.chain().rpcEnableDeprecated("filter_coinbase")};
+
     // Tally
     CAmount amount = 0;
     for (const std::pair<const uint256, CWalletTx>& wtx_pair : wallet.mapWallet) {
         const CWalletTx& wtx = wtx_pair.second;
-        if (wtx.IsCoinBase() || !wallet.chain().checkFinalTx(*wtx.tx) || wtx.GetDepthInMainChain() < min_depth) {
+        int depth{wtx.GetDepthInMainChain()};
+        if (depth < min_depth
+            // Coinbase with less than 1 confirmation is an orphan
+            || (wtx.IsCoinBase() && (depth < 1 || filter_coinbase))
+            || (!include_immature && wtx.IsImmatureCoinBase())
+            || !wallet.chain().checkFinalTx(*wtx.tx)) {
             continue;
         }
 
@@ -698,6 +709,7 @@ static RPCHelpMan getreceivedbyaddress()
                 {
                     {"address", RPCArg::Type::STR, RPCArg::Optional::NO, "The bitcoin address for transactions."},
                     {"minconf", RPCArg::Type::NUM, /* default */ "1", "Only include transactions confirmed at least this many times."},
+                    {"include_immature", RPCArg::Type::BOOL, /* default */ "false", "Include immature coinbase transactions."},
                 },
                 RPCResult{
                     RPCResult::Type::STR_AMOUNT, "amount", "The total amount in " + CURRENCY_UNIT + " received at this address."
@@ -709,8 +721,11 @@ static RPCHelpMan getreceivedbyaddress()
             + HelpExampleCli("getreceivedbyaddress", "\"" + EXAMPLE_ADDRESS[0] + "\" 0") +
             "\nThe amount with at least 6 confirmations\n"
             + HelpExampleCli("getreceivedbyaddress", "\"" + EXAMPLE_ADDRESS[0] + "\" 6") +
+            "\nThe amount with at least 6 confirmations including immature coinbase outputs\n"
+            + HelpExampleCli("getreceivedbyaddress", "\"" + EXAMPLE_ADDRESS[0] + "\" 6 true") +
             "\nAs a JSON-RPC call\n"
             + HelpExampleRpc("getreceivedbyaddress", "\"" + EXAMPLE_ADDRESS[0] + "\", 6")
+            + HelpExampleRpc("getreceivedbyaddress", "\"" + EXAMPLE_ADDRESS[0] + "\", 6, true")
                 },
         [&](const RPCHelpMan& self, const JSONRPCRequest& request) -> UniValue
 {
@@ -736,6 +751,7 @@ static RPCHelpMan getreceivedbylabel()
                 {
                     {"label", RPCArg::Type::STR, RPCArg::Optional::NO, "The selected label, may be the default label using \"\"."},
                     {"minconf", RPCArg::Type::NUM, /* default */ "1", "Only include transactions confirmed at least this many times."},
+                    {"include_immature", RPCArg::Type::BOOL, /* default */ "false", "Include immature coinbase transactions."},
                 },
                 RPCResult{
                     RPCResult::Type::STR_AMOUNT, "amount", "The total amount in " + CURRENCY_UNIT + " received for this label."
@@ -747,8 +763,10 @@ static RPCHelpMan getreceivedbylabel()
             + HelpExampleCli("getreceivedbylabel", "\"tabby\" 0") +
             "\nThe amount with at least 6 confirmations\n"
             + HelpExampleCli("getreceivedbylabel", "\"tabby\" 6") +
+            "\nThe amount with at least 6 confirmations including immature coinbase outputs\n"
+            + HelpExampleCli("getreceivedbylabel", "\"tabby\" 6 true") +
             "\nAs a JSON-RPC call\n"
-            + HelpExampleRpc("getreceivedbylabel", "\"tabby\", 6")
+            + HelpExampleRpc("getreceivedbylabel", "\"tabby\", 6, true")
                 },
         [&](const RPCHelpMan& self, const JSONRPCRequest& request) -> UniValue
 {
@@ -1053,7 +1071,7 @@ static UniValue ListReceived(const CWallet& wallet, const UniValue& params, bool
 
     bool has_filtered_address = false;
     CTxDestination filtered_address = CNoDestination();
-    if (!by_label && params.size() > 3) {
+    if (!by_label && !params[3].isNull() && !params[3].get_str().empty()) {
         if (!IsValidDestinationString(params[3].get_str())) {
             throw JSONRPCError(RPC_WALLET_ERROR, "address_filter parameter was invalid");
         }
@@ -1061,18 +1079,30 @@ static UniValue ListReceived(const CWallet& wallet, const UniValue& params, bool
         has_filtered_address = true;
     }
 
+    // getreceivedbyaddress has address filter at 3rd index, so next params index is 4
+    // getreceivedbylabel has no filter parameter, so next params index is 3
+    int next_index{by_label ? 3 : 4};
+    bool include_immature{!params[next_index].isNull() && params[next_index].get_bool()};
+
+    // Filtering out coinbase outputs is deprecated
+    // It can be enabled by setting deprecatedrpc=filter_coinbase
+    bool filter_coinbase{wallet.chain().rpcEnableDeprecated("filter_coinbase")};
+
     // Tally
     std::map<CTxDestination, tallyitem> mapTally;
     for (const std::pair<const uint256, CWalletTx>& pairWtx : wallet.mapWallet) {
         const CWalletTx& wtx = pairWtx.second;
 
-        if (wtx.IsCoinBase() || !wallet.chain().checkFinalTx(*wtx.tx)) {
-            continue;
-        }
-
         int nDepth = wtx.GetDepthInMainChain();
         if (nDepth < nMinDepth)
             continue;
+
+        // Coinbase with less than 1 confirmation is an orphan
+        if ((wtx.IsCoinBase() && (nDepth < 1 || filter_coinbase))
+            || (!include_immature && wtx.IsImmatureCoinBase())
+            || !wallet.chain().checkFinalTx(*wtx.tx)) {
+            continue;
+        }
 
         for (const CTxOut& txout : wtx.tx->vout)
         {
@@ -1189,6 +1219,7 @@ static RPCHelpMan listreceivedbyaddress()
                     {"include_empty", RPCArg::Type::BOOL, /* default */ "false", "Whether to include addresses that haven't received any payments."},
                     {"include_watchonly", RPCArg::Type::BOOL, /* default */ "true for watch-only wallets, otherwise false", "Whether to include watch-only addresses (see 'importaddress')"},
                     {"address_filter", RPCArg::Type::STR, RPCArg::Optional::OMITTED_NAMED_ARG, "If present, only return information on this address."},
+                    {"include_immature", RPCArg::Type::BOOL, /* default */ "false", "Include immature coinbase transactions."},
                 },
                 RPCResult{
                     RPCResult::Type::ARR, "", "",
@@ -1210,8 +1241,9 @@ static RPCHelpMan listreceivedbyaddress()
                 RPCExamples{
                     HelpExampleCli("listreceivedbyaddress", "")
             + HelpExampleCli("listreceivedbyaddress", "6 true")
+            + HelpExampleCli("listreceivedbyaddress", "6 true true \"\" true")
             + HelpExampleRpc("listreceivedbyaddress", "6, true, true")
-            + HelpExampleRpc("listreceivedbyaddress", "6, true, true, \"" + EXAMPLE_ADDRESS[0] + "\"")
+            + HelpExampleRpc("listreceivedbyaddress", "6, true, true, \"" + EXAMPLE_ADDRESS[0] + "\", true")
                 },
         [&](const RPCHelpMan& self, const JSONRPCRequest& request) -> UniValue
 {
@@ -1237,6 +1269,7 @@ static RPCHelpMan listreceivedbylabel()
                     {"minconf", RPCArg::Type::NUM, /* default */ "1", "The minimum number of confirmations before payments are included."},
                     {"include_empty", RPCArg::Type::BOOL, /* default */ "false", "Whether to include labels that haven't received any payments."},
                     {"include_watchonly", RPCArg::Type::BOOL, /* default */ "true for watch-only wallets, otherwise false", "Whether to include watch-only addresses (see 'importaddress')"},
+                    {"include_immature", RPCArg::Type::BOOL, /* default */ "false", "Include immature coinbase transactions."},
                 },
                 RPCResult{
                     RPCResult::Type::ARR, "", "",
@@ -1253,7 +1286,7 @@ static RPCHelpMan listreceivedbylabel()
                 RPCExamples{
                     HelpExampleCli("listreceivedbylabel", "")
             + HelpExampleCli("listreceivedbylabel", "6 true")
-            + HelpExampleRpc("listreceivedbylabel", "6, true, true")
+            + HelpExampleRpc("listreceivedbylabel", "6, true, true, true")
                 },
         [&](const RPCHelpMan& self, const JSONRPCRequest& request) -> UniValue
 {
