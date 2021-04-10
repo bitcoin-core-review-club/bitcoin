@@ -19,6 +19,7 @@
 #include <validationinterface.h>
 
 #include <cmath>
+#include <numeric>
 #include <optional>
 
 CTxMemPoolEntry::CTxMemPoolEntry(const CTransactionRef& _tx, const CAmount& _nFee,
@@ -151,33 +152,46 @@ void CTxMemPool::UpdateTransactionsFromBlock(const std::vector<uint256> &vHashes
     }
 }
 
-bool CTxMemPool::CalculateMemPoolAncestors(const CTxMemPoolEntry &entry, setEntries &setAncestors, uint64_t limitAncestorCount, uint64_t limitAncestorSize, uint64_t limitDescendantCount, uint64_t limitDescendantSize, std::string &errString, bool fSearchForParents /* = true */) const
+bool CTxMemPool::CalculateMemPoolAncestors(const std::vector<CTxMemPoolEntry::CTxMemPoolEntryRef>& entries,
+                                           setEntries& setAncestors,
+                                           const uint64_t limitAncestorCount,
+                                           const uint64_t limitAncestorSize,
+                                           const uint64_t limitDescendantCount,
+                                           const uint64_t limitDescendantSize,
+                                           std::string &errString,
+                                           const bool fSearchForParents /*=true*/) const
 {
-    CTxMemPoolEntry::Parents staged_ancestors;
-    const CTransaction &tx = entry.GetTx();
+    const size_t total_virtual_size = std::accumulate(entries.cbegin(), entries.cend(), 0,
+                                      [](int64_t sum, const auto& entry)
+                                      { return sum + GetVirtualTransactionSize(entry.get().GetTx()); });
+    const size_t total_count = entries.size();
 
+    CTxMemPoolEntry::Parents staged_ancestors;
     if (fSearchForParents) {
-        // Get parents of this transaction that are in the mempool
-        // GetMemPoolParents() is only valid for entries in the mempool, so we
-        // iterate mapTx to find parents.
-        for (unsigned int i = 0; i < tx.vin.size(); i++) {
-            std::optional<txiter> piter = GetIter(tx.vin[i].prevout.hash);
-            if (piter) {
-                staged_ancestors.insert(**piter);
-                if (staged_ancestors.size() + 1 > limitAncestorCount) {
-                    errString = strprintf("too many unconfirmed parents [limit: %u]", limitAncestorCount);
-                    return false;
+        for (const auto& entry : entries) {
+            // Get parents of this transaction that are in the mempool
+            // GetMemPoolParents() is only valid for entries in the mempool, so we
+            // iterate mapTx to find parents.
+            for (const auto& input : entry.get().GetTx().vin) {
+                std::optional<txiter> piter = GetIter(input.prevout.hash);
+                if (piter) {
+                    staged_ancestors.insert(**piter);
+                    if (staged_ancestors.size() + total_count > limitAncestorCount) {
+                        errString = strprintf("too many unconfirmed parents [limit: %u]", limitAncestorCount);
+                        return false;
+                    }
                 }
             }
         }
     } else {
-        // If we're not searching for parents, we require this to be an
-        // entry in the mempool already.
-        txiter it = mapTx.iterator_to(entry);
-        staged_ancestors = it->GetMemPoolParentsConst();
+        assert(entries.size() == 1);
+        // If we're not searching for parents, we require all entries to be in the mempool already.
+        txiter it = mapTx.iterator_to(entries[0].get());
+        assert(it != mapTx.end());
+        staged_ancestors = it->GetMemPoolParents();
     }
 
-    size_t totalSizeWithAncestors = entry.GetTxSize();
+    size_t totalSizeWithAncestors = total_virtual_size;
 
     while (!staged_ancestors.empty()) {
         const CTxMemPoolEntry& stage = staged_ancestors.begin()->get();
@@ -187,10 +201,13 @@ bool CTxMemPool::CalculateMemPoolAncestors(const CTxMemPoolEntry &entry, setEntr
         staged_ancestors.erase(stage);
         totalSizeWithAncestors += stageit->GetTxSize();
 
-        if (stageit->GetSizeWithDescendants() + entry.GetTxSize() > limitDescendantSize) {
+        // When multiple transactions are passed in, the ancestors and descendants of all transactions
+        // considered together must be within limits even if they are not interdependent. This may be
+        // stricter than the limits for each individual transaction.
+        if (stageit->GetSizeWithDescendants() + total_virtual_size > limitDescendantSize) {
             errString = strprintf("exceeds descendant size limit for tx %s [limit: %u]", stageit->GetTx().GetHash().ToString(), limitDescendantSize);
             return false;
-        } else if (stageit->GetCountWithDescendants() + 1 > limitDescendantCount) {
+        } else if (stageit->GetCountWithDescendants() + total_count > limitDescendantCount) {
             errString = strprintf("too many descendants for tx %s [limit: %u]", stageit->GetTx().GetHash().ToString(), limitDescendantCount);
             return false;
         } else if (totalSizeWithAncestors > limitAncestorSize) {
@@ -206,7 +223,7 @@ bool CTxMemPool::CalculateMemPoolAncestors(const CTxMemPoolEntry &entry, setEntr
             if (setAncestors.count(parent_it) == 0) {
                 staged_ancestors.insert(parent);
             }
-            if (staged_ancestors.size() + setAncestors.size() + 1 > limitAncestorCount) {
+            if (staged_ancestors.size() + setAncestors.size() + total_count > limitAncestorCount) {
                 errString = strprintf("too many unconfirmed ancestors [limit: %u]", limitAncestorCount);
                 return false;
             }
@@ -214,6 +231,17 @@ bool CTxMemPool::CalculateMemPoolAncestors(const CTxMemPoolEntry &entry, setEntr
     }
 
     return true;
+}
+
+bool CTxMemPool::CalculateMemPoolAncestors(const CTxMemPoolEntry &entry, setEntries &setAncestors,
+                                           uint64_t limitAncestorCount, uint64_t limitAncestorSize,
+                                           uint64_t limitDescendantCount, uint64_t limitDescendantSize,
+                                           std::string &errString, bool fSearchForParents /* = true */) const
+{
+    std::vector<CTxMemPoolEntry::CTxMemPoolEntryRef> entry_vec{std::cref(entry)};
+    return CalculateMemPoolAncestors(entry_vec,
+                                     setAncestors, limitAncestorCount, limitAncestorSize, limitDescendantCount,
+                                     limitDescendantSize, errString, fSearchForParents);
 }
 
 void CTxMemPool::UpdateAncestorsOf(bool add, txiter it, setEntries &setAncestors)
