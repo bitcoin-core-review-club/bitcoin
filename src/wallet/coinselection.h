@@ -57,6 +57,42 @@ public:
     }
 };
 
+/** Parameters for one iteration of Coin Selection. */
+struct CoinSelectionParams
+{
+    size_t change_output_size = 0;
+    /** Size of the input to spend a change output in virtual bytes. */
+    size_t change_spend_size = 0;
+    /** The targeted feerate of the transaction being built. */
+    CFeeRate m_effective_feerate;
+    /** The feerate estimate used to estimate an upper bound on what should be sufficient to spend
+     * the change output sometime in the future. */
+    CFeeRate m_long_term_feerate;
+    /** If the cost to spend a change output at the discard feerate exceeds its value, drop it to fees. */
+    CFeeRate m_discard_feerate;
+    /** Size of the transaction before coin selection, consisting of the header and recipient
+     * output(s), excluding the inputs and change output(s). */
+    size_t tx_noinputs_size = 0;
+    /** Indicate that we are subtracting the fee from outputs */
+    bool m_subtract_fee_outputs = false;
+    /** When true, always spend all (up to OUTPUT_GROUP_MAX_ENTRIES) or none of the outputs
+     * associated with the same address. This helps reduce privacy leaks resulting from address
+     * reuse. Dust outputs are not eligible to be added to output groups and thus not considered. */
+    bool m_avoid_partial_spends = false;
+
+    CoinSelectionParams(size_t change_output_size, size_t change_spend_size, CFeeRate effective_feerate,
+                        CFeeRate long_term_feerate, CFeeRate discard_feerate, size_t tx_noinputs_size, bool avoid_partial) :
+        change_output_size(change_output_size),
+        change_spend_size(change_spend_size),
+        m_effective_feerate(effective_feerate),
+        m_long_term_feerate(long_term_feerate),
+        m_discard_feerate(discard_feerate),
+        tx_noinputs_size(tx_noinputs_size),
+        m_avoid_partial_spends(avoid_partial)
+    {}
+    CoinSelectionParams() {}
+};
+
 /** Parameters for filtering which OutputGroups we may use in coin selection.
  * We start by being very selective and requiring multiple confirmations and
  * then get more permissive if we cannot fund the transaction. */
@@ -102,23 +138,22 @@ struct OutputGroup
     CAmount effective_value{0};
     /** The fee to spend these UTXOs at the effective feerate. */
     CAmount fee{0};
-    /** The target feerate of the transaction we're trying to build. */
-    CFeeRate m_effective_feerate{0};
     /** The fee to spend these UTXOs at the long term feerate. */
     CAmount long_term_fee{0};
-    /** The feerate for spending a created change output eventually (i.e. not urgently, and thus at
-     * a lower feerate). Calculated using long term fee estimate. This is used to decide whether
-     * it could be economical to create a change output. */
-    CFeeRate m_long_term_feerate{0};
+    /** Coin selection parameters relevant to this OutputGroup.
+     * The particular parameters used are the effective feerate (to calculate the effective value and fee),
+     * the long term feerate (to calculate the long term fee), and whether the fee is to be subtracted from the outputs.
+     */
+    CoinSelectionParams m_cs_params;
 
     OutputGroup() {}
-    OutputGroup(const CFeeRate& effective_feerate, const CFeeRate& long_term_feerate) :
-        m_effective_feerate(effective_feerate),
-        m_long_term_feerate(long_term_feerate)
+    OutputGroup(const CoinSelectionParams& params) :
+        m_cs_params(params)
     {}
 
     void Insert(const CInputCoin& output, int depth, bool from_me, size_t ancestors, size_t descendants, bool positive_only);
     bool EligibleForSpending(const CoinEligibilityFilter& eligibility_filter) const;
+    CAmount GetSelectionAmount() const;
 };
 
 bool SelectCoinsBnB(std::vector<OutputGroup>& utxo_pool, const CAmount& selection_target, const CAmount& cost_of_change, std::set<CInputCoin>& out_set, CAmount& value_ret);
