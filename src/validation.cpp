@@ -1161,6 +1161,31 @@ PackageMempoolAcceptResult MemPoolAccept::AcceptMultipleTransactions(const std::
         m_viewmempool.PackageAddTransaction(ws.m_ptx);
     }
 
+    // Limit the scope of _entries and _ancestors. We should calculate ancestors for each
+    // transaction individually when we call Finalize().
+    {
+        std::vector<CTxMemPoolEntry::CTxMemPoolEntryRef> _entries;
+        std::transform(workspaces.cbegin(), workspaces.cend(), std::back_inserter(_entries),
+                       [](const auto& ws) { return std::cref(*ws.m_entry); });
+        // We won't use the set of ancestors returned for calling Finalize().
+        CTxMemPool::setEntries _ancestors;
+        std::string err_string;
+        if (!m_pool.CalculateMemPoolAncestors(_entries,
+                                              _ancestors, m_limit_ancestors, m_limit_ancestor_size, m_limit_descendants,
+                                              m_limit_descendant_size, err_string, /* fSearchForParents */ true)) {
+            // All transactions must have individually passed mempool ancestor and descendant limits
+            // inside of PreChecks(). Figuring out which transaction to attribute this failure to may
+            // be implementation-dependent, and it's likely to be multiple transactions because we
+            // evaluated all of them together. Return the same failure for all transactions.
+            for (auto& ws : workspaces) {
+                ws.m_state.Invalid(TxValidationResult::TX_MEMPOOL_POLICY, "too-long-mempool-chain", err_string);
+                results.emplace(ws.m_ptx->GetWitnessHash(), MempoolAcceptResult::Failure(ws.m_state));
+            }
+            package_state.Invalid(PackageValidationResult::PCKG_POLICY, "package-too-long-mempool-chain");
+            return PackageMempoolAcceptResult(package_state, std::move(results));
+        }
+    }
+
     for (Workspace& ws : workspaces) {
         PrecomputedTransactionData txdata;
         if (!PolicyScriptChecks(args, ws, txdata)) {
