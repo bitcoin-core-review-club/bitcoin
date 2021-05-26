@@ -619,6 +619,10 @@ bool MemPoolAccept::PreChecks(ATMPArgs& args, Workspace& ws)
     {
         const CTransaction* ptxConflicting = m_pool.GetConflictTx(txin.prevout);
         if (ptxConflicting) {
+            if (args.disallow_mempool_conflicts) {
+                // Transaction conflicts with a mempool tx, but we're not allowing replacements.
+                return state.Invalid(TxValidationResult::TX_MEMPOOL_POLICY, "txn-mempool-conflict");
+            }
             if (!setConflicts.count(ptxConflicting->GetHash()))
             {
                 // Allow opt-out of transaction replacement by setting
@@ -642,7 +646,7 @@ bool MemPoolAccept::PreChecks(ATMPArgs& args, Workspace& ws)
                         break;
                     }
                 }
-                if (fReplacementOptOut || args.disallow_mempool_conflicts) {
+                if (fReplacementOptOut) {
                     return state.Invalid(TxValidationResult::TX_MEMPOOL_POLICY, "txn-mempool-conflict");
                 }
 
